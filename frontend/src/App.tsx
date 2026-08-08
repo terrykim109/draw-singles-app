@@ -12,8 +12,8 @@ function App() {
 
   return (
     <div style={{ padding: 40, fontFamily: 'sans-serif' }}>
-      <h1>Draw Singles 💘</h1>
-      <p>Backend status: <strong>{message}</strong></p>
+      <h1>Draw Singles, where you can draw to match with special someone</h1>
+      <p>Backend is running: <strong>{message}</strong></p>
     </div>
   );
 }
