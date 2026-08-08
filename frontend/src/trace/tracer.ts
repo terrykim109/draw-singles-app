@@ -476,14 +476,15 @@ function topmostLeftmost(pixels: number[], w: number): Pt {
   return { x: best % w, y: (best / w) | 0 };
 }
 
-export function traceContour(mask: Uint8Array, w: number, h: number, start: Pt): Pt[] {
+export function traceContour(mask: Uint8Array, w: number, h: number, start: Pt): Pt[] | null {
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : mask[y * w + x]);
   const contour: Pt[] = [start];
   let B = start;
-  let cin = 6; // W — as if we walked in from the left (west of the top-left pixel)
-  let b1: Pt | null = null; // second boundary pixel; returning to it closes the loop
+  let cin = 6; // W — as if we walked in from the left
+  let b1: Pt | null = null;
+  const maxPts = Math.min(w * h, 12000);
 
-  for (let guard = 0; guard < w * h + 32; guard++) {
+  for (let guard = 0; guard < maxPts; guard++) {
     let next: Pt | null = null;
     let c = 0;
     for (let k = 1; k <= 8; k++) {
@@ -496,10 +497,13 @@ export function traceContour(mask: Uint8Array, w: number, h: number, start: Pt):
         break;
       }
     }
-    if (!next) break; // isolated pixel — handled as a dot upstream
+    if (!next) return null; // isolated pixel — caller will skip
     if (b1 === null) {
       b1 = next;
-    } else if (B.x === start.x && B.y === start.y && next.x === b1.x && next.y === b1.y) {
+    } else if (
+      B.x === start.x && B.y === start.y &&
+      next.x === b1.x && next.y === b1.y
+    ) {
       break; // loop complete
     }
     contour.push(next);
@@ -526,7 +530,11 @@ function fitStroke(
   inkPixels: number,
   tol: number
 ): TracedStroke | null {
-  if (points.length < 3) return null;
+  if (points.length < 2) return null;
+  // Long contours can overflow the recursive RDP / curve-fitter stack.
+  // In practice a sane boundary is < 4000 pts; anything larger means the
+  // Moore trace failed to terminate and we should skip this component.
+  if (points.length > 8000) return null;
   const settled = smoothPolyline(points, Math.max(1, Math.round(tol * 1.4)));
   const thinned = simplify(settled, tol * 0.5);
   if (thinned.length < 2) return null;
@@ -603,13 +611,16 @@ export function trace(canvas: HTMLCanvasElement, options: TraceOptions): TraceRe
       }
       const start = topmostLeftmost(pixels, w);
       const contour = traceContour(mask, w, h, start);
-      if (contour.length < 4) continue;
+      if (!contour || contour.length < 4) continue;
       const fitted = fitStroke(`c${label}`, contour, true, size, tol);
       if (fitted) strokes.push(fitted);
     }
   }
 
-  const box = boxOf(strokes.flatMap((s) => s.points).filter(Boolean));
+  if (strokes.length === 0) {
+    return { strokes, box: { x: 0, y: 0, w: 1, h: 1 }, width: w, height: h, inkRatio: ink / (w * h), threshold };
+  }
+  const box = boxOf(strokes.flatMap((s) => s.points));
   return { strokes, box, width: w, height: h, inkRatio: ink / (w * h), threshold };
 }
 

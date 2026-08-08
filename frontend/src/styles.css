@@ -921,6 +921,14 @@ p {
   opacity: 0.65;
 }
 
+.part-row--body {
+  opacity: 0.85;
+}
+
+.part-row--body .role-tag {
+  border-style: dashed;
+}
+
 .lab-tools {
   display: flex;
   flex-wrap: wrap;

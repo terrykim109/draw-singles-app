@@ -9,7 +9,7 @@ import type { Pt } from '../lab/geometry';
 
 const CANVAS_W = 460;
 const CANVAS_H = 480;
-const ROLES: Role[] = ['core', 'appendage', 'detail'];
+const ROLES: Role[] = ['core', 'appendage', 'body', 'detail'];
 
 type LabProps = {
   onBack: () => void;
@@ -45,6 +45,7 @@ export default function Lab({ onBack }: LabProps) {
   const shrink = rawPoints === 0 ? 0 : Math.round((1 - controlPoints / rawPoints) * 100);
 
   const details = rig.bones.filter((bone) => bone.role === 'detail').length;
+  const bodies = rig.bones.filter((bone) => bone.role === 'body').length;
   const rigless = rig.score === 0;
 
   function addStroke(points: Pt[], width: number) {
@@ -328,9 +329,10 @@ export default function Lab({ onBack }: LabProps) {
           ) : (
             <>
               <p className="muted" style={{ fontSize: 12 }}>
-                core: {rig.coreId ? '1 stroke' : 'none'} · appendages: {rig.appendages.length} ·
-                details: {details} · joints: {rig.joints.length} — click a stroke in the stage,
-                or a chip below, to cycle its role
+                core: {rig.coreId ? '1 stroke' : 'none'} · limbs that swing:{' '}
+                {rig.appendages.length} · body (rides along): {bodies} · details: {details} ·
+                joints: {rig.joints.length} — click a stroke in the stage, or a chip below, to
+                cycle its role
               </p>
 
               <div className="parts">
@@ -347,7 +349,12 @@ export default function Lab({ onBack }: LabProps) {
                       stroke {index + 1}
                       <span className="muted">
                         {' '}
-                        · {bone.parent ? `depth ${bone.depth}` : 'unattached'}
+                        ·{' '}
+                        {bone.role === 'core'
+                          ? 'root'
+                          : bone.parent
+                            ? `depth ${bone.depth}`
+                            : 'unattached'}
                       </span>
                     </span>
                     <span className="role-tag">{bone.role}</span>

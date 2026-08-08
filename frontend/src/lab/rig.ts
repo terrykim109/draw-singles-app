@@ -14,11 +14,14 @@ import {
 import type { VectorStroke } from './strokes';
 
 /**
- * Role vocabulary is deliberately tiny and species-agnostic. A tentacle, a leg,
- * a petal and a whisker are all just "appendage" — geometry decides how they
- * move, not what we call them.
+ * Species-agnostic roles — geometry decides how a stroke moves, not what we
+ * call it. A tentacle, a leg, a petal and a whisker are all "appendage".
+ *
+ * `body` is the one that stops a drawing tearing itself apart: strokes that are
+ * attached but aren't limb-like (closed shapes, strokes joined mid-way, stubs)
+ * ride the core rigidly instead of swinging off it.
  */
-export type Role = 'core' | 'appendage' | 'detail';
+export type Role = 'core' | 'appendage' | 'body' | 'detail';
 
 export type Bone = {
   id: string;
@@ -34,6 +37,8 @@ export type Bone = {
   length: number;
   depth: number;
   closed: boolean;
+  /** true when the joint sits at one END of this stroke — limbs hang, they don't skewer */
+  hinged: boolean;
   box: Box;
 };
 
@@ -434,7 +439,9 @@ function assemble(
     const first = poly[0];
     const last = poly[poly.length - 1];
     const tip = len(sub(first, pivot)) > len(sub(last, pivot)) ? first : last;
+    const nearestEnd = Math.min(len(sub(first, pivot)), len(sub(last, pivot)));
     bones.set(index, {
+      hinged: nearestEnd <= Math.max(10, 0.3 * lengths[index]),
       id: strokes[index].id,
       stroke: strokes[index],
       role,
@@ -500,7 +507,44 @@ function assemble(
   });
 
   const ordered = strokes.map((_, i) => bones.get(i)!).filter(Boolean);
-  const withOverrides = ordered.map((bone) =>
+
+  /* ---- who actually deserves to swing? -------------------------------- *
+   * Everything attached used to become an appendage, so a figure with ten
+   * body strokes dismembered itself the moment a limb preset ran. A stroke
+   * only swings if it hangs off a joint at one of its own ends, runs roughly
+   * straight, and is long enough to read as a limb. Everything else is body:
+   * carried rigidly by whatever it is attached to. */
+  const figureDiagonal = Math.max(Math.hypot(drawingBox.w, drawingBox.h), 1);
+  const coreBox = ordered.find((bone) => bone.role === 'core')?.box ?? null;
+
+  /** a limb reaches past the body; a belly line or a whisker stays inside it */
+  const escapesCore = (tip: Pt) => {
+    if (!coreBox) return true;
+    const inset = Math.max(8, 0.1 * Math.min(coreBox.w, coreBox.h));
+    return (
+      tip.x < coreBox.x + inset ||
+      tip.x > coreBox.x + coreBox.w - inset ||
+      tip.y < coreBox.y + inset ||
+      tip.y > coreBox.y + coreBox.h - inset
+    );
+  };
+
+  const classified = ordered.map((bone) => {
+    if (bone.role === 'core' || bone.role === 'detail') return bone;
+
+    const reach = len(sub(bone.tip, bone.pivot));
+    const straightness = reach / Math.max(bone.length, 1);
+    const limbLike =
+      !bone.closed &&
+      bone.hinged &&
+      straightness >= 0.5 &&
+      bone.length >= 0.1 * figureDiagonal &&
+      escapesCore(bone.tip);
+
+    return limbLike ? bone : { ...bone, role: 'body' as Role };
+  });
+
+  const withOverrides = classified.map((bone) =>
     overrides[bone.id] ? { ...bone, role: overrides[bone.id] } : bone
   );
 

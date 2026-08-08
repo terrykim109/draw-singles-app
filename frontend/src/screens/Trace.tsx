@@ -51,7 +51,9 @@ export default function Trace({ onBack }: TraceProps) {
     if (!canvas) return null;
     try {
       return trace(canvas, options);
-    } catch {
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('trace failed', err);
       return null;
     }
   }, [canvas, options]);

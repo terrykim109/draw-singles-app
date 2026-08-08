@@ -120,7 +120,7 @@ export const PRESETS: Preset[] = [
     id: 'wave',
     name: 'wave',
     blurb:
-      'every appendage swings from its joint, offset in phase. two of them reads as waving; twenty reads as an anemone.',
+      'only limbs swing — body strokes ride along. two limbs reads as waving; twenty reads as an anemone.',
     needsRig: true,
     root: {
       keyframes: [
@@ -150,8 +150,10 @@ export const PRESETS: Preset[] = [
     bone: (bone, ctx) => {
       if (bone.role === 'detail') return null;
       const reach = clamp(bone.length / Math.max(ctx.maxLength, 1), 0.2, 1);
+      const base = (4 + 9 * reach + 2 * bone.depth) * straightness(bone);
+      // body parts sway with the figure, they don't flap off it
       const amplitude =
-        bone.role === 'core' ? 2.5 : (4 + 9 * reach + 2 * bone.depth) * straightness(bone);
+        bone.role === 'core' ? 2.5 : bone.role === 'body' ? Math.min(base * 0.3, 3) : base;
       const duration = 2400;
       // phase by attach position, so the wave sweeps across the figure
       const acrossX = clamp(bone.pivot.x / 460, 0, 1);
