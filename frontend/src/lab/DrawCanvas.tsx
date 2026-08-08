@@ -52,7 +52,12 @@ export default function DrawCanvas({
   onStrokeEnd,
 }: DrawCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [live, setLive] = useState<Pt[]>([]);
+  /* The in-progress stroke lives in a ref, not state. It used to be state, and
+     the stroke was committed from inside the setState updater — but StrictMode
+     deliberately calls updaters twice to surface impurity, so every stroke was
+     being handed upstream twice and the canvas quietly filled with duplicates. */
+  const liveRef = useRef<Pt[]>([]);
+  const [, repaint] = useState(0);
   const drawing = useRef(false);
 
   useEffect(() => {
@@ -69,12 +74,34 @@ export default function DrawCanvas({
 
     const ink = getComputedStyle(canvas).getPropertyValue('--ink').trim() || '#2b18e0';
     paint(ctx, strokes, ink);
-    if (live.length > 0) paint(ctx, [{ points: live, width: brush }], ink);
-  }, [strokes, live, width, height, brush]);
+    if (liveRef.current.length > 0) {
+      paint(ctx, [{ points: liveRef.current, width: brush }], ink);
+    }
+  });
 
   function positionOf(event: PointerEvent<HTMLCanvasElement>): Pt {
     const rect = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  /** hand the finished stroke upstream — once, and only if it drew anything */
+  function finish() {
+    if (!drawing.current) return;
+    drawing.current = false;
+
+    const points = liveRef.current;
+    liveRef.current = [];
+    repaint((n) => n + 1);
+
+    if (points.length < 2) return;
+    // a stub too short to fit a curve to is a stray tap, not a stroke
+    let travelled = 0;
+    for (let i = 1; i < points.length; i++) {
+      travelled += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    }
+    if (travelled < 3) return;
+
+    onStrokeEnd(points, brush);
   }
 
   return (
@@ -85,32 +112,21 @@ export default function DrawCanvas({
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         drawing.current = true;
-        setLive([positionOf(event)]);
+        liveRef.current = [positionOf(event)];
+        repaint((n) => n + 1);
       }}
       onPointerMove={(event) => {
         if (!drawing.current) return;
         const point = positionOf(event);
-        setLive((prev) => {
-          const last = prev[prev.length - 1];
-          // throttle by distance so we don't store 400 points per centimetre
-          if (last && Math.hypot(point.x - last.x, point.y - last.y) < 1.5) return prev;
-          return [...prev, point];
-        });
+        const last = liveRef.current[liveRef.current.length - 1];
+        // throttle by distance so we don't store 400 points per centimetre
+        if (last && Math.hypot(point.x - last.x, point.y - last.y) < 1.5) return;
+        liveRef.current = [...liveRef.current, point];
+        repaint((n) => n + 1);
       }}
-      onPointerUp={() => {
-        drawing.current = false;
-        setLive((points) => {
-          if (points.length > 1) onStrokeEnd(points, brush);
-          return [];
-        });
-      }}
+      onPointerUp={finish}
       onPointerLeave={() => {
-        if (!drawing.current) return;
-        drawing.current = false;
-        setLive((points) => {
-          if (points.length > 1) onStrokeEnd(points, brush);
-          return [];
-        });
+        finish();
       }}
     />
   );

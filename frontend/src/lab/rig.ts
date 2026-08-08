@@ -291,11 +291,16 @@ function quality(rig: Rig): number {
 }
 
 export function buildRig(
-  input: VectorStroke[],
+  rawInput: VectorStroke[],
   jointTolerance: number,
   overrides: Record<string, Role> = {},
   split = true
 ): Rig {
+  /* A tap, or the stub committed when the pointer leaves the canvas mid-stroke,
+     fits to zero curves. Its flattened polyline is empty, and every downstream
+     step reads poly[0] — so drop those here rather than crashing the screen. */
+  const input = rawInput.filter((stroke) => stroke.curves.length > 0);
+
   if (!split || input.length < 2) return assemble(input, jointTolerance, overrides);
 
   const junctions = analyseJunctions(input, jointTolerance);

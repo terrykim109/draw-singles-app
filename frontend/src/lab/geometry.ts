@@ -247,20 +247,41 @@ export function pathData(curves: Cubic[]): string {
   return d;
 }
 
+/*
+ * Loops, not `Math.min(...points)`. Spreading an array into a call passes one
+ * argument per element, and V8 throws "Maximum call stack size exceeded" past
+ * roughly 130k of them — which a traced photo reaches easily.
+ */
 export function boxOf(points: Pt[]): Box {
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const x = Math.min(...xs);
-  const y = Math.min(...ys);
-  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+  if (points.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
 export function mergeBoxes(boxes: Box[]): Box {
-  const x = Math.min(...boxes.map((b) => b.x));
-  const y = Math.min(...boxes.map((b) => b.y));
-  const right = Math.max(...boxes.map((b) => b.x + b.w));
-  const bottom = Math.max(...boxes.map((b) => b.y + b.h));
-  return { x, y, w: right - x, h: bottom - y };
+  if (boxes.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const b of boxes) {
+    if (b.x < minX) minX = b.x;
+    if (b.y < minY) minY = b.y;
+    if (b.x + b.w > maxX) maxX = b.x + b.w;
+    if (b.y + b.h > maxY) maxY = b.y + b.h;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
 export function boxesOverlap(a: Box, b: Box, pad: number): boolean {

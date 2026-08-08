@@ -1001,6 +1001,20 @@ p {
   cursor: pointer;
 }
 
+.crash-trace {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface);
+  border-radius: var(--wobble-sm);
+  padding: 14px;
+  margin: 0;
+}
+
 /* ---------- accent picker (dev tool) ---------- */
 
 .colorlab {

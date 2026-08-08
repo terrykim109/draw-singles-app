@@ -15,6 +15,8 @@ import { makeSampleDrawing } from '../trace/sample';
 import { storedPalette } from '../palettes';
 
 const MAX_DIM = 1000;
+/** each card renders its own inline SVG, so this list has to stay bounded */
+const MAX_CARDS = 60;
 
 type TraceProps = {
   onBack: () => void;
@@ -288,6 +290,14 @@ export default function Trace({ onBack }: TraceProps) {
                       />
                       white ink on dark paper
                     </label>
+                    <label className="slider slider--inline">
+                      <input
+                        type="checkbox"
+                        checked={options.evenLighting}
+                        onChange={(e) => set('evenLighting', e.target.checked)}
+                      />
+                      even out lighting
+                    </label>
                   </div>
                 </div>
               </div>
@@ -304,7 +314,8 @@ export default function Trace({ onBack }: TraceProps) {
               <p className="hand">2 · smooth svg</p>
               <p className="muted" style={{ fontSize: 12 }}>
                 {result
-                  ? `${result.strokes.length} strokes · ${curves} curves · ${controlPts} control pts · ${lighter}% lighter`
+                  ? `${result.strokes.length} strokes · ${curves} curves · ${controlPts} control pts · ${lighter}% lighter` +
+                    (result.dropped > 0 ? ` · ${result.dropped} tiny marks dropped` : '')
                   : 'waiting for a drawing'}
               </p>
             </div>
@@ -398,7 +409,7 @@ export default function Trace({ onBack }: TraceProps) {
             </p>
           ) : (
             <div className="svg-grid">
-              {result.strokes.map((stroke, index) => {
+              {result.strokes.slice(0, MAX_CARDS).map((stroke, index) => {
                 const b = stroke.box;
                 const p = Math.ceil(options.strokeWidth) + 2;
                 const vb = `${b.x - p} ${b.y - p} ${b.w + p * 2} ${b.h + p * 2}`;
@@ -449,6 +460,12 @@ export default function Trace({ onBack }: TraceProps) {
                   </div>
                 );
               })}
+              {result.strokes.length > MAX_CARDS && (
+                <p className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
+                  + {result.strokes.length - MAX_CARDS} more strokes (not shown — they are
+                  still in the combined .svg)
+                </p>
+              )}
             </div>
           )}
         </div>

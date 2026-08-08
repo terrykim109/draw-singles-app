@@ -37,6 +37,8 @@ export type TraceOptions = {
   tolerance: number;
   /** stroke width used for display + export */
   strokeWidth: number;
+  /** subtract uneven lighting before thresholding — leave on for photos */
+  evenLighting: boolean;
 };
 
 export const DEFAULT_TRACE_OPTIONS: TraceOptions = {
@@ -47,7 +49,15 @@ export const DEFAULT_TRACE_OPTIONS: TraceOptions = {
   minArea: 4,
   tolerance: 3,
   strokeWidth: 4,
+  evenLighting: true,
 };
+
+/**
+ * Ceiling on how many strokes we hand back. A badly lit photo can skeletonise
+ * into thousands of fragments, and the UI draws a card with its own inline SVG
+ * per stroke — that is what takes the tab down. Keep the biggest ones.
+ */
+export const MAX_STROKES = 300;
 
 export type TracedStroke = {
   id: string;
@@ -70,6 +80,8 @@ export type TraceResult = {
   height: number;
   inkRatio: number;
   threshold: number;
+  /** strokes discarded by the MAX_STROKES ceiling */
+  dropped: number;
 };
 
 /* ------------------------------------------------------------------ *
@@ -146,6 +158,27 @@ function boxBlur(gray: Uint8ClampedArray, w: number, h: number, radius: number):
       const rem = Math.max(0, y - radius);
       sum += tmp[add * w + x] - tmp[rem * w + x];
     }
+  }
+  return out;
+}
+
+/**
+ * Flatten the lighting before thresholding.
+ *
+ * A phone photo of paper is never evenly lit — there's a vignette, a shadow
+ * from your hand, a warm patch by the window. One global threshold then splits
+ * the *paper* into light and dark halves instead of splitting ink from paper
+ * (measured: 54% of a synthetic photo came back as "ink"). Dividing the image
+ * by a heavily blurred copy of itself estimates the paper and subtracts it, so
+ * what's left is what you actually drew.
+ */
+function flattenLighting(gray: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
+  const radius = Math.max(8, Math.round(Math.min(w, h) / 12));
+  const paper = boxBlur(gray, w, h, radius);
+  const out = new Uint8ClampedArray(gray.length);
+  for (let i = 0; i < gray.length; i++) {
+    // 128 keeps it centred so Otsu still has a sensible range to work with
+    out[i] = 128 + gray[i] - paper[i];
   }
   return out;
 }
@@ -493,7 +526,11 @@ export function traceContour(mask: Uint8Array, w: number, h: number, start: Pt):
       const ny = B.y + DIRS[di].y;
       if (at(nx, ny)) {
         next = { x: nx, y: ny };
-        c = (cin + k - 1) % 8;
+        // Resume the sweep from the direction pointing BACK at the pixel we
+        // just left. The old code reused an offset measured around the previous
+        // centre, so on anything curved the sweep started in the wrong place and
+        // cut straight through the interior — a filled disc traced as a diamond.
+        c = (di + 4) % 8;
         break;
       }
     }
@@ -577,7 +614,8 @@ export function trace(canvas: HTMLCanvasElement, options: TraceOptions): TraceRe
   if (!ctx) throw new Error('no 2d context');
 
   const data = ctx.getImageData(0, 0, w, h).data;
-  const gray = grayscale(data, w, h);
+  const raw = grayscale(data, w, h);
+  const gray = options.evenLighting ? flattenLighting(raw, w, h) : raw;
   const blurred = boxBlur(gray, w, h, options.blur);
   const threshold = Math.max(0, Math.min(255, otsuThreshold(blurred) + options.thresholdOffset));
   const mask = binarize(blurred, w, h, threshold, options.invert);
@@ -618,10 +656,30 @@ export function trace(canvas: HTMLCanvasElement, options: TraceOptions): TraceRe
   }
 
   if (strokes.length === 0) {
-    return { strokes, box: { x: 0, y: 0, w: 1, h: 1 }, width: w, height: h, inkRatio: ink / (w * h), threshold };
+    return {
+      strokes,
+      box: { x: 0, y: 0, w: 1, h: 1 },
+      width: w,
+      height: h,
+      inkRatio: ink / (w * h),
+      threshold,
+      dropped: 0,
+    };
   }
-  const box = boxOf(strokes.flatMap((s) => s.points));
-  return { strokes, box, width: w, height: h, inkRatio: ink / (w * h), threshold };
+
+  // keep the biggest strokes; a shadow-speckled photo can otherwise return
+  // thousands of one-pixel fragments and the UI renders one card per stroke
+  let kept = strokes;
+  let dropped = 0;
+  if (strokes.length > MAX_STROKES) {
+    kept = [...strokes]
+      .sort((a, b) => b.points.length + b.inkPixels - (a.points.length + a.inkPixels))
+      .slice(0, MAX_STROKES);
+    dropped = strokes.length - kept.length;
+  }
+
+  const box = boxOf(kept.flatMap((s) => s.points));
+  return { strokes: kept, box, width: w, height: h, inkRatio: ink / (w * h), threshold, dropped };
 }
 
 /* ------------------------------------------------------------------ *
