@@ -1,0 +1,6 @@
+uploads/
+drawsingles.db
+__pycache__/
+*.pyc
+venv/
+.env
