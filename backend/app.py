@@ -10,6 +10,7 @@ import re
 import base64
 import atexit
 import subprocess
+import threading
 import sys
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
@@ -735,10 +736,18 @@ def serve_upload(filename):
 # Automatic social model retraining
 # ---------------------------------------------------------------------------
 
+# Retraining rewrites drawing_features for every user. SQLite allows a single
+# writer, so two overlapping runs produce "database is locked" mid-write.
+_retrain_lock = threading.Lock()
+
+
 def scheduled_retrain():
     script = os.path.join(os.path.dirname(__file__), "train_social.py")
     if not os.path.exists(script):
         app.logger.warning("train_social.py not found, skipping scheduled retrain")
+        return
+    if not _retrain_lock.acquire(blocking=False):
+        app.logger.warning("social retrain already running, skipping this trigger")
         return
     try:
         result = subprocess.run(
@@ -754,12 +763,48 @@ def scheduled_retrain():
             app.logger.warning("Scheduled social retrain failed: %s", result.stderr)
     except Exception as exc:
         app.logger.error("Scheduled social retrain exception: %s", exc)
+    finally:
+        _retrain_lock.release()
 
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=scheduled_retrain, trigger="cron", hour=3, minute=0)
-scheduler.start()
-atexit.register(lambda: scheduler.shutdown())
+def start_scheduler():
+    """Start the nightly retrain. Must run in exactly ONE process.
+
+    This used to run at import time, which starts it twice under Flask's debug
+    reloader (parent + child) and once per worker under gunicorn — every copy
+    firing its own train_social.py subprocess at the same wall-clock time, all
+    writing the same SQLite file.
+    """
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=scheduled_retrain,
+        trigger="cron",
+        hour=3,
+        minute=0,
+        id="social_retrain",
+        max_instances=1,   # never overlap with a still-running retrain
+        coalesce=True,     # missed triggers collapse into one, not a backlog
+    )
+    scheduler.start()
+    def _stop():
+        # shutdown() raises if it is already stopped — atexit would print a
+        # traceback on every clean exit
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+
+    atexit.register(_stop)
+    app.logger.info("social retrain scheduled (03:00 daily)")
+    return scheduler
+
+
+# Under a WSGI server the module is imported, not run, so opt in explicitly —
+# and only for one worker.
+if os.environ.get("RUN_SCHEDULER") == "1":
+    start_scheduler()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    debug = os.environ.get("FLASK_DEBUG", "1") != "0"
+    # with the reloader, only the child process (WERKZEUG_RUN_MAIN=true) owns it
+    if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_scheduler()
+    app.run(debug=debug, port=5001)

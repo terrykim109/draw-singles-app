@@ -161,7 +161,6 @@ function App() {
           <Done
             profile={profile}
             liked={liked}
-            userId={userId || ''}
             onKeepSwiping={() => setScreen('swipe')}
             onRestart={() => {
               setProfile(null);
