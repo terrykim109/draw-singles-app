@@ -58,8 +58,7 @@ npm run dev
 
 The Vite dev server starts on http://localhost:5173 and proxies /api and /uploads requests to the Flask backend on port 5001, so there are no CORS issues during development.
 
-Optional: Enable social matching refinement
-After users have chatted, you can train the lightweight social model that re-ranks matches based on conversation quality rather than visual similarity alone.
+Optional: After users have chatted, you can train the lightweight social model that re-ranks matches based on conversation quality rather than visual similarity alone.
 ```bash
 cd backend
 # Install PyTorch CPU (only needed for this feature)
