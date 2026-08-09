@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { MOCK_PROFILES } from '../mockMatches';
+import { api } from '../api';
 import type { MatchProfile, Profile } from '../types';
 
 type SwipeProps = {
   you: Profile;
+  userId: string;
   onDone: (liked: MatchProfile[]) => void;
 };
 
-const THRESHOLD = 110; // px of horizontal drag before a swipe counts
+const THRESHOLD = 110;
 const FLY = 640;
 
 type Decision = { profile: MatchProfile; liked: boolean };
@@ -18,17 +19,8 @@ const SHORT_LABEL: Record<string, string> = {
   looking: 'here for',
 };
 
-function shuffle<T>(list: T[]): T[] {
-  const copy = [...list];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-export default function Swipe({ you, onDone }: SwipeProps) {
-  const [deck, setDeck] = useState<MatchProfile[]>(() => shuffle(MOCK_PROFILES));
+export default function Swipe({ you, userId, onDone }: SwipeProps) {
+  const [deck, setDeck] = useState<MatchProfile[]>([]);
   const [liked, setLiked] = useState<MatchProfile[]>([]);
   const [history, setHistory] = useState<Decision[]>([]);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -41,9 +33,16 @@ export default function Swipe({ you, onDone }: SwipeProps) {
 
   const top = deck[0];
 
-  function fly(direction: 'left' | 'right') {
+  useEffect(() => {
+    api.getFeed(userId).then(setDeck);
+  }, [userId]);
+
+  async function fly(direction: 'left' | 'right') {
     if (!top || busy.current) return;
     busy.current = true;
+
+    await api.swipe(userId, top.id, direction);
+
     const to = { x: direction === 'right' ? FLY : -FLY, y: 24 };
     pos.current = to;
     setOffset(to);
@@ -66,14 +65,14 @@ export default function Swipe({ you, onDone }: SwipeProps) {
   }
 
   function replay() {
-    setDeck(shuffle(MOCK_PROFILES));
     setLiked([]);
     setHistory([]);
     pos.current = { x: 0, y: 0 };
     setOffset({ x: 0, y: 0 });
+    api.getFeed(userId).then(setDeck);
   }
 
-  // keyboard: ← nope · → like · ↑ undo (re-registered every render to stay fresh)
+  // keyboard: ← nope · → like · ↑ undo
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'ArrowLeft') fly('left');
