@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import DrawCanvas from '../lab/DrawCanvas';
 import AnimatedDrawing from '../lab/AnimatedDrawing';
 import { DEFAULT_PRESET, PRESETS } from '../lab/presets';
@@ -13,10 +13,21 @@ const ROLES: Role[] = ['core', 'appendage', 'body', 'detail'];
 
 type LabProps = {
   onBack: () => void;
+  /** pre-load strokes (e.g. from image→svg tracing) */
+  initialStrokes?: RawStroke[] | null;
 };
 
-export default function Lab({ onBack }: LabProps) {
+export default function Lab({ onBack, initialStrokes }: LabProps) {
   const [raw, setRaw] = useState<RawStroke[]>([]);
+
+  // when strokes arrive from outside (image→svg) load them immediately
+  useEffect(() => {
+    if (initialStrokes && initialStrokes.length > 0) {
+      setRaw(initialStrokes);
+      setOverrides({});
+      setPlayKey((key) => key + 1);
+    }
+  }, [initialStrokes]);
   const [brush, setBrush] = useState(4);
   const [tolerance, setTolerance] = useState(3);
   const [jointGap, setJointGap] = useState(14);

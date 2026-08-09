@@ -9,6 +9,8 @@ export type Profile = {
   name: string;
   photo: string | null;
   answers: Record<string, string>;
+  /** what the drawing depicts — the classifier's output, hand-set for now */
+  category?: string;
 };
 
 /** a profile you encounter while swiping */

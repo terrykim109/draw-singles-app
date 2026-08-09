@@ -2,10 +2,11 @@ import { useState } from 'react';
 import SignUp from './screens/SignUp';
 import Intro from './screens/Intro';
 import CreateProfile from './screens/CreateProfile';
-import Swipe from './screens/Swipe';
+import Constellation from './screens/Constellation';
 import Done from './screens/Done';
 import Lab from './screens/Lab';
 import Trace from './screens/Trace';
+import type { RawStroke } from './lab/strokes';
 import ColorLab from './components/ColorLab';
 import { MarginDoodles } from './components/Doodles';
 import type { Account, MatchProfile, Profile, Screen } from './types';
@@ -25,6 +26,7 @@ function App() {
   const [liked, setLiked] = useState<MatchProfile[]>([]);
   const [swipeRound, setSwipeRound] = useState(0);
   const [returnTo, setReturnTo] = useState<Screen>(LAB_RETURN);
+  const [labStrokes, setLabStrokes] = useState<RawStroke[] | null>(null);
 
   function openTool(tool: Screen) {
     if (!isTool(screen)) setReturnTo(screen);
@@ -48,9 +50,26 @@ function App() {
           </div>
         )}
 
-        {screen === 'lab' && <Lab onBack={() => setScreen(returnTo)} />}
+        {screen === 'lab' && (
+          <Lab
+            onBack={() => {
+              setLabStrokes(null);
+              setScreen(returnTo);
+            }}
+            initialStrokes={labStrokes}
+          />
+        )}
 
-        {screen === 'trace' && <Trace onBack={() => setScreen(returnTo)} />}
+        {screen === 'trace' && (
+          <Trace
+            onBack={() => setScreen(returnTo)}
+            onAnimate={(strokes) => {
+              setLabStrokes(strokes);
+              setReturnTo('trace');
+              setScreen('lab');
+            }}
+          />
+        )}
 
         {screen === 'signup' && (
           <SignUp
