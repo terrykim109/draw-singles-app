@@ -3,6 +3,7 @@ import { MOCK_PROFILES } from '../mockMatches';
 import Dendrogram from '../components/Dendrogram';
 import { QUESTIONS, type MatchProfile, type Profile } from '../types';
 import { CATEGORIES, CATEGORY_BY_ID } from '../categories';
+import { getVectors, type ApiVectorProfile } from '../api';
 import {
   clusterHue,
   clusterNodes,
@@ -98,15 +99,70 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
     [you, yourCategory]
   );
 
-  const nodes = useMemo<EmbeddedNode<MatchProfile>[]>(
-    () =>
-      [yourProfile, ...MOCK_PROFILES].map((item) => ({
-        item,
-        id: item.id,
-        vector: embed(item),
-      })),
-    [yourProfile]
-  );
+  /* ---- live data ---------------------------------------------------- *
+   * The backend holds the real 250-dim vectors from the classifier. Poll for
+   * them, because classification runs in the background after signup and this
+   * screen opens immediately. Until your own drawing lands in the index we stay
+   * on the bundled sample profiles — mixing a locally-embedded vector with the
+   * model's would compare two different spaces and produce quiet nonsense. */
+  const [live, setLive] = useState<ApiVectorProfile[] | null>(null);
+  const [source, setSource] = useState<'loading' | 'live' | 'sample'>('loading');
+
+  useEffect(() => {
+    let stopped = false;
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const response = await getVectors();
+        const mine = you.id && response.profiles.some((p) => p.id === you.id);
+        if (!stopped && response.profiles.length > 0 && mine) {
+          setLive(response.profiles);
+          setSource('live');
+          return;
+        }
+      } catch {
+        // backend down or model unavailable — sample data it is
+      }
+      if (stopped) return;
+      attempts += 1;
+      if (attempts < 8) window.setTimeout(poll, 1500);
+      else setSource((current) => (current === 'live' ? current : 'sample'));
+    };
+
+    poll();
+    return () => {
+      stopped = true;
+    };
+  }, [you.id]);
+
+  const nodes = useMemo<EmbeddedNode<MatchProfile>[]>(() => {
+    if (live && live.length > 0) {
+      return live.map((profile) => {
+        const isYou = profile.id === you.id;
+        return {
+          id: isYou ? YOU : profile.id,
+          vector: profile.vector,
+          item: {
+            id: isYou ? YOU : profile.id,
+            name: profile.name || 'someone',
+            photo: profile.drawing_url,
+            answers: {},
+            category: profile.class ?? undefined,
+            note: profile.top_k?.[0]
+              ? `${Math.round(profile.top_k[0].p * 100)}% ${profile.top_k[0].class}`
+              : undefined,
+          },
+        };
+      });
+    }
+
+    return [yourProfile, ...MOCK_PROFILES].map((item) => ({
+      item,
+      id: item.id,
+      vector: embed(item),
+    }));
+  }, [live, yourProfile, you.id]);
 
   const links = useMemo(() => knnLinks(nodes, 3), [nodes]);
   const tiers = useMemo(() => tiersFor(nodes, 3), [nodes]);
@@ -265,6 +321,13 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
         <p className="hand muted">
           the drawings sorted themselves into groups. nobody wrote the categories.
         </p>
+        <span className={`feed feed--${source}`}>
+          {source === 'live'
+            ? `live · ${nodes.length} drawings classified by the model`
+            : source === 'loading'
+              ? 'classifying your drawing…'
+              : 'sample data · backend offline'}
+        </span>
       </div>
 
       <div className="graph-grid">

@@ -9,6 +9,7 @@ type CreateProfileProps = {
 export default function CreateProfile({ onSubmit, onBack }: CreateProfileProps) {
   const [name, setName] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -18,6 +19,7 @@ export default function CreateProfile({ onSubmit, onBack }: CreateProfileProps) 
 
   function readFile(file: File | undefined) {
     if (!file || !file.type.startsWith('image/')) return;
+    setFile(file);
     const reader = new FileReader();
     reader.onload = () => setPhoto(reader.result as string);
     reader.readAsDataURL(file);
@@ -120,7 +122,7 @@ export default function CreateProfile({ onSubmit, onBack }: CreateProfileProps) 
           className="btn btn--primary"
           type="button"
           disabled={!canSubmit}
-          onClick={() => onSubmit({ name: name.trim(), photo, answers })}
+          onClick={() => onSubmit({ name: name.trim(), photo, answers, file })}
         >
           Continue
         </button>

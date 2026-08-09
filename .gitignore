@@ -25,3 +25,12 @@ Thumbs.db
 dist
 dist-ssr
 *.local
+
+# Model weights - best.pt is 225 MB, over GitHub's 100 MB per-file limit.
+# Share it out of band (Drive/S3) and point SKETCH_CHECKPOINT at it.
+*.pt
+*.pth
+
+# Uploaded drawings + local database
+backend/uploads/
+*.db

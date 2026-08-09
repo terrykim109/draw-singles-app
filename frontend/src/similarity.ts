@@ -274,9 +274,22 @@ export function clusterNodes<T extends Profile & { id: string }>(
       centroid: centroidOf(members),
       traits: dominantTraits(profiles),
       tags,
-      name: typeNameForTags(tags),
+      // Live classes come from the model's 250-label vocabulary, which has no
+      // entry in the local tag taxonomy — name those groups after whatever the
+      // members actually drew.
+      name: tags.length > 0 ? typeNameForTags(tags) : classTypeName(profiles),
     };
   });
+}
+
+/** name a group after the class its members drew most often */
+function classTypeName(profiles: Profile[]): string {
+  const counts = new Map<string, number>();
+  for (const profile of profiles) {
+    if (profile.category) counts.set(profile.category, (counts.get(profile.category) ?? 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  return top ? `${top[0]} type` : 'unsorted type';
 }
 
 /** the tags a group holds in common, most widely shared first */
