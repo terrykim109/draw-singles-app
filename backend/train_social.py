@@ -115,9 +115,5 @@ def train():
     print("All social vectors updated.")
 
 
-def run_training():
-    train()
-
-
 if __name__ == "__main__":
-    run_training()
+    train()

@@ -1,5 +1,3 @@
-from unittest import result
-
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -607,6 +605,7 @@ def reindex():
     conn.execute("DELETE FROM groups")
     conn.execute("UPDATE users SET group_id = NULL")
 
+    from social_layer import augment_features
     done, skipped, failed = 0, 0, []
     for row in rows:
         stored = json.loads(row["drawing_features"] or "{}")
@@ -620,7 +619,6 @@ def reindex():
             continue
 
         features = result.get("features") or {}
-        from social_layer import augment_features
         features = augment_features(features)
         conn.execute(
             "UPDATE users SET drawing_class = ?, drawing_confidence = ?, "
