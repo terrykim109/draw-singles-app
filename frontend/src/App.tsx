@@ -3,6 +3,7 @@ import SignUp from './screens/SignUp';
 import Intro from './screens/Intro';
 import CreateProfile from './screens/CreateProfile';
 import Constellation from './screens/Constellation';
+import Swipe from './screens/Swipe';  
 import Done from './screens/Done';
 import Lab from './screens/Lab';
 import Trace from './screens/Trace';
@@ -122,12 +123,13 @@ function App() {
           />
         )}
 
-        {screen === 'swipe' && profile && (
-          <Constellation
+       {screen === 'swipe' && profile && userId && (
+          <Swipe
             key={swipeRound}
             you={profile}
-            onDone={(matches: MatchProfile[]) => {
-              setLiked(matches);
+            userId={userId}
+            onDone={(liked) => {
+              setLiked(liked);
               setSwipeRound((round) => round + 1);
               setScreen('done');
             }}
