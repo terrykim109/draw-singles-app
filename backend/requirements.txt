@@ -8,3 +8,6 @@ torch>=2.0
 torchvision>=0.15
 pillow>=10.0
 numpy>=1.24
+
+# nightly social-model retrain scheduler (backend/app.py)
+APScheduler>=3.10

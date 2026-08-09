@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { MOCK_PROFILES } from '../mockMatches';
-import Dendrogram from '../components/Dendrogram';
 import { QUESTIONS, type MatchProfile, type Profile } from '../types';
 import { CATEGORIES, CATEGORY_BY_ID } from '../categories';
 import { getVectors, type ApiVectorProfile } from '../api';
 import {
   clusterHue,
   clusterNodes,
+  groupBySupertype,
   embed,
   knnLinks,
   sharedTraits,
@@ -18,16 +18,16 @@ import {
 
 type ConstellationProps = {
   you: Profile;
+  /** backend account id. Available right after signup, whereas you.id only
+      appears once the profile POST resolves — so prefer it for identity. */
+  userId?: string;
   onDone: (liked: MatchProfile[]) => void;
 };
 
-const W = 720;
-const H = 520;
-const R = 32;
 const YOU = '__you__';
 
 type Body = { id: string; x: number; y: number; vx: number; vy: number; pinned: boolean };
-type View = 'types' | 'tree' | 'map';
+type View = 'map' | 'types';
 
 const SHORT_LABEL: Record<string, string> = {
   medium: 'draws with',
@@ -83,10 +83,11 @@ function blobPath(points: { x: number; y: number }[], pad: number): string {
   return `${path} Z`;
 }
 
-export default function Constellation({ you, onDone }: ConstellationProps) {
+export default function Constellation({ you, userId, onDone }: ConstellationProps) {
   const [liked, setLiked] = useState<MatchProfile[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [view, setView] = useState<View>('types');
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [view, setView] = useState<View>('map');
   const [groupCount, setGroupCount] = useState(3);
   const [, tick] = useState(0);
 
@@ -105,6 +106,8 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
    * screen opens immediately. Until your own drawing lands in the index we stay
    * on the bundled sample profiles — mixing a locally-embedded vector with the
    * model's would compare two different spaces and produce quiet nonsense. */
+  const myId = userId ?? you.id;
+
   const [live, setLive] = useState<ApiVectorProfile[] | null>(null);
   /* 'waiting' and 'offline' are different failures and used to be reported
      identically as "backend offline" — which sent me hunting a server problem
@@ -120,7 +123,7 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
       try {
         const response = await getVectors();
         reachable = true;
-        const mine = you.id && response.profiles.some((p) => p.id === you.id);
+        const mine = myId && response.profiles.some((p) => p.id === myId);
         if (!stopped && response.profiles.length > 0 && mine) {
           setLive(response.profiles);
           setSource('live');
@@ -142,12 +145,12 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
     return () => {
       stopped = true;
     };
-  }, [you.id]);
+  }, [myId]);
 
   const nodes = useMemo<EmbeddedNode<MatchProfile>[]>(() => {
     if (live && live.length > 0) {
       return live.map((profile) => {
-        const isYou = profile.id === you.id;
+        const isYou = profile.id === myId;
         return {
           id: isYou ? YOU : profile.id,
           vector: profile.vector,
@@ -170,11 +173,29 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
       id: item.id,
       vector: embed(item),
     }));
-  }, [live, yourProfile, you.id]);
+  }, [live, yourProfile, myId]);
 
-  const links = useMemo(() => knnLinks(nodes, 3), [nodes]);
+  /* Canvas and node size scale with the crowd: 31 people at R=32 in a 720x520
+     box overlap badly. Links get a similarity floor for the same reason — a
+     cross-class link is ~0.07 and only adds noise. */
+  const crowd = Math.max(nodes.length, 1);
+  const R = crowd > 26 ? 18 : crowd > 16 ? 24 : 32;
+  const W = crowd > 16 ? 960 : 720;
+  const H = crowd > 16 ? 680 : 520;
+  const showNames = crowd <= 20;
+
+  const links = useMemo(
+    () => knnLinks(nodes, crowd > 20 ? 2 : 3, 0.35),
+    [nodes, crowd]
+  );
   const tiers = useMemo(() => tiersFor(nodes, 3), [nodes]);
-  const clusters = useMemo(() => clusterNodes(nodes, groupCount), [nodes, groupCount]);
+  // Types come from the label when we have one. Clustering the vector only
+  // recovers "same class" — see groupBySupertype for the measurements.
+  const labelled = nodes.some((n) => n.item.category);
+  const clusters = useMemo(
+    () => (labelled ? groupBySupertype(nodes) : clusterNodes(nodes, groupCount)),
+    [nodes, groupCount, labelled]
+  );
 
   const clusterOf = useMemo(() => {
     const map = new Map<string, Cluster<MatchProfile>>();
@@ -226,8 +247,8 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
     clusters.forEach((cluster, index) => {
       const angle = (index / Math.max(clusters.length, 1)) * Math.PI * 2 - Math.PI / 2;
       anchors.set(cluster.id, {
-        x: W / 2 + Math.cos(angle) * 165,
-        y: H / 2 + Math.sin(angle) * 130,
+        x: W / 2 + Math.cos(angle) * W * 0.3,
+        y: H / 2 + Math.sin(angle) * H * 0.31,
       });
     });
 
@@ -247,7 +268,7 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
             dy = Math.random() - 0.5;
             dist = 1;
           }
-          const push = 4200 / (dist * dist);
+          const push = (2600 + crowd * 90) / (dist * dist);
           a.vx -= (dx / dist) * push;
           a.vy -= (dy / dist) * push;
           b.vx += (dx / dist) * push;
@@ -346,38 +367,37 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
             <div className="lab-panel-head">
               <div className="options">
                 <button
-                  className={`option${view === 'types' ? ' option--selected' : ''}`}
-                  type="button"
-                  onClick={() => setView('types')}
-                >
-                  types
-                </button>
-                <button
-                  className={`option${view === 'tree' ? ' option--selected' : ''}`}
-                  type="button"
-                  onClick={() => setView('tree')}
-                >
-                  tree
-                </button>
-                <button
                   className={`option${view === 'map' ? ' option--selected' : ''}`}
                   type="button"
                   onClick={() => setView('map')}
                 >
                   map
                 </button>
+                <button
+                  className={`option${view === 'types' ? ' option--selected' : ''}`}
+                  type="button"
+                  onClick={() => setView('types')}
+                >
+                  types
+                </button>
               </div>
-              <label className="slider">
-                groups
-                <input
-                  type="range"
-                  min={2}
-                  max={5}
-                  value={groupCount}
-                  onChange={(e) => setGroupCount(Number(e.target.value))}
-                />
-                {groupCount}
-              </label>
+              {labelled ? (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {clusters.length} types
+                </span>
+              ) : (
+                <label className="slider">
+                  groups
+                  <input
+                    type="range"
+                    min={2}
+                    max={5}
+                    value={groupCount}
+                    onChange={(e) => setGroupCount(Number(e.target.value))}
+                  />
+                  {groupCount}
+                </label>
+              )}
             </div>
 
             {view === 'types' ? (
@@ -426,15 +446,6 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
                   );
                 })}
               </div>
-            ) : view === 'tree' ? (
-              <Dendrogram
-                nodes={nodes}
-                groupCount={groupCount}
-                onGroupCount={setGroupCount}
-                selected={selected}
-                onSelect={setSelected}
-                youId={YOU}
-              />
             ) : (
               <svg
                 ref={svgRef}
@@ -468,7 +479,7 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
                   return (
                     <g key={cluster.id}>
                       <path
-                        d={blobPath(points, R + 22)}
+                        d={blobPath(points, R + 14)}
                         fill={colour}
                         fillOpacity={0.09}
                         stroke={colour}
@@ -523,6 +534,8 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
                         dragged.current = node.id;
                         setSelected(node.id);
                       }}
+                      onMouseEnter={() => setHovered(node.id)}
+                      onMouseLeave={() => setHovered((current) => (current === node.id ? null : current))}
                     >
                       <clipPath id={`clip-${node.id}`}>
                         <circle r={R} />
@@ -545,9 +558,11 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
                           ♥
                         </text>
                       )}
-                      <text className="graph-node__name" y={R + 17} textAnchor="middle">
-                        {isYou ? 'you' : node.item.name}
-                      </text>
+                      {(showNames || selected === node.id || hovered === node.id) && (
+                        <text className="graph-node__name" y={R + 15} textAnchor="middle">
+                          {isYou ? 'you' : node.item.name}
+                        </text>
+                      )}
                     </g>
                   );
                 })}
@@ -556,10 +571,8 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
 
             <p className="muted" style={{ fontSize: 12 }}>
               {view === 'types'
-                ? 'groups come from what people drew — the two most similar merge, repeatedly. type names are read off whatever the members have in common.'
-                : view === 'tree'
-                  ? 'the whole merge history: drawings join up from the bottom, and every join sits at the similarity it happened at. drag the cut line — types are just where you slice it.'
-                  : 'each group drifts to its own patch. links join a drawing to its 3 nearest neighbours; ring style is rarity.'}
+                ? 'types come from what the classifier saw. the drawing vectors tell you who is nearest, but they carry no notion of a cat being closer to a rabbit than to a candle — so the type comes from the label.'
+                : 'each group drifts to its own patch. links join a drawing to its 3 nearest neighbours; ring style is rarity.'}
             </p>
           </div>
         </div>
