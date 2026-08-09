@@ -70,7 +70,7 @@ export default function SignUp({ onSubmit }: SignUpProps) {
         </h1>
 
         <p className="hand muted" style={{ maxWidth: '18ch' }}>
-          match with someone over a bad drawing
+          match with someone over a drawing
         </p>
 
         <SquiggleDoodle size={140} />

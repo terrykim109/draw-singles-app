@@ -177,7 +177,7 @@ export default function Swipe({ you, userId, onDone }: SwipeProps) {
       <div className="stack center" style={{ gap: 8, alignItems: 'center' }}>
         <p className="eyebrow">step 2 of 3</p>
         <h1 className="underlined">swipe the drawings</h1>
-        <p className="hand muted">left to pass, right to like — the drawings do the flirting.</p>
+        <p className="hand muted">left to pass, right to like — the drawings speak for themselves.</p>
         <p className="muted" style={{ fontSize: 12 }}>
           swiping as {you.name} · your drawing is out there somewhere
         </p>
