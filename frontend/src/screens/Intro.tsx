@@ -21,7 +21,7 @@ export default function Intro({ onStart }: IntroProps) {
           <h2>hey there</h2>
 
           <p className="lede" style={{ maxWidth: '38ch' }}>
-            lorem ipsum dolor sit amet. no selfies, no filters — you draw something, and
+            Are you ready to put your drawing skills to practice? No selfies, no filters — you draw something, and
             the drawings do the flirting.
           </p>
 

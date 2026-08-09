@@ -1,4 +1,4 @@
-export type Screen = 'signup' | 'intro' | 'profile' | 'constellation'| 'swipe' | 'done' | 'lab' | 'trace';
+export type Screen = 'signup' | 'intro' | 'profile' | 'constellation'| 'swipe' | 'done' | 'lab' | 'trace' | 'chat';
 
 export type Account = {
   email: string;
@@ -29,6 +29,14 @@ export type Question = {
   id: string;
   prompt: string;
   options: string[];
+};
+
+export type Message = {
+  id: number;
+  sender_id: string;
+  recipient_id: string;
+  body: string;
+  created_at: string;
 };
 
 export const QUESTIONS: Question[] = [

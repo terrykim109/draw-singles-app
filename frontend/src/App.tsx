@@ -12,6 +12,7 @@ import ColorLab from './components/ColorLab';
 import { MarginDoodles } from './components/Doodles';
 import type { Account, MatchProfile, Profile, Screen } from './types';
 import { completeProfile } from './api';
+import Chat from './screens/Chat';
 
 const ORDER: Screen[] = ['signup', 'intro', 'profile',  'constellation','swipe', 'done'];
 
@@ -28,6 +29,7 @@ function App() {
   const [swipeRound, setSwipeRound] = useState(0);
   const [returnTo, setReturnTo] = useState<Screen>(LAB_RETURN);
   const [labStrokes, setLabStrokes] = useState<RawStroke[] | null>(null);
+  const [chatWith, setChatWith] = useState<MatchProfile | null>(null);
 
   function openTool(tool: Screen) {
     if (!isTool(screen)) setReturnTo(screen);
@@ -140,7 +142,15 @@ function App() {
             you={profile}
             userId={userId}
             onDone={(liked) => {
-              setLiked(liked);
+              // Defensive deduplication — if Swipe.tsx ever double-adds,
+              // this cleans it before it reaches the Done screen.
+              const seen = new Set<string>();
+              const unique = liked.filter((m) => {
+                if (seen.has(m.id)) return false;
+                seen.add(m.id);
+                return true;
+              });
+              setLiked(unique);
               setSwipeRound((round) => round + 1);
               setScreen('done');
             }}
@@ -151,13 +161,22 @@ function App() {
           <Done
             profile={profile}
             liked={liked}
+            userId={userId || ''}
             onKeepSwiping={() => setScreen('swipe')}
             onRestart={() => {
               setProfile(null);
               setLiked([]);
               setScreen('signup');
             }}
+            onChat={(match) => {
+              setChatWith(match);
+              setScreen('chat');
+            }}
           />
+        )}
+
+        {screen === 'chat' && userId && chatWith && (
+          <Chat youId={userId} them={chatWith} onBack={() => setScreen('done')} />
         )}
 
         {screen !== 'lab' && screen !== 'trace' && (

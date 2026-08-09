@@ -83,5 +83,28 @@ def init_db():
             kind = decl.split()[0]
             conn.execute(f"ALTER TABLE users ADD COLUMN {name} {kind}")
 
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id TEXT,
+            recipient_id TEXT,
+            body TEXT,
+            created_at TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_a TEXT,
+            user_b TEXT,
+            thread_id TEXT UNIQUE,
+            message_count INTEGER DEFAULT 0,
+            last_message_at TEXT,
+            outcome TEXT,
+            created_at TEXT
+        )
+    """)
+    
     conn.commit()
     conn.close()
