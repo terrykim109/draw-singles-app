@@ -10,7 +10,7 @@ import type { RawStroke } from './lab/strokes';
 import ColorLab from './components/ColorLab';
 import { MarginDoodles } from './components/Doodles';
 import type { Account, MatchProfile, Profile, Screen } from './types';
-import { api, completeProfile } from './api';
+import { completeProfile } from './api';
 
 const ORDER: Screen[] = ['signup', 'intro', 'profile', 'swipe', 'done'];
 
@@ -73,10 +73,14 @@ function App() {
 
         {screen === 'signup' && (
           <SignUp
-            onSubmit={async (account) => {
-              const res = await api.register(account.email, account.password);
+            onSubmit={(account) => {
+              // SignUp has already registered (or logged in) and carries the id.
+              // Registering again here hits "email already exists", whose body has
+              // no id — userId became undefined and every later profile POST was
+              // silently skipped, so nothing ever got classified.
               setAccount(account);
-              setUserId(res.id);
+              if (account.id) setUserId(account.id);
+              else console.warn('no account id — profile will not be classified');
               setScreen('intro');
             }}
           />

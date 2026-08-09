@@ -106,15 +106,20 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
    * on the bundled sample profiles — mixing a locally-embedded vector with the
    * model's would compare two different spaces and produce quiet nonsense. */
   const [live, setLive] = useState<ApiVectorProfile[] | null>(null);
-  const [source, setSource] = useState<'loading' | 'live' | 'sample'>('loading');
+  /* 'waiting' and 'offline' are different failures and used to be reported
+     identically as "backend offline" — which sent me hunting a server problem
+     when the server was fine and the drawing simply had no vector. */
+  const [source, setSource] = useState<'loading' | 'live' | 'waiting' | 'offline'>('loading');
 
   useEffect(() => {
     let stopped = false;
     let attempts = 0;
 
     const poll = async () => {
+      let reachable = false;
       try {
         const response = await getVectors();
+        reachable = true;
         const mine = you.id && response.profiles.some((p) => p.id === you.id);
         if (!stopped && response.profiles.length > 0 && mine) {
           setLive(response.profiles);
@@ -122,12 +127,15 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
           return;
         }
       } catch {
-        // backend down or model unavailable — sample data it is
+        reachable = false;
       }
       if (stopped) return;
       attempts += 1;
-      if (attempts < 8) window.setTimeout(poll, 1500);
-      else setSource((current) => (current === 'live' ? current : 'sample'));
+      if (attempts < 10) window.setTimeout(poll, 1500);
+      else
+        setSource((current) =>
+          current === 'live' ? current : reachable ? 'waiting' : 'offline'
+        );
     };
 
     poll();
@@ -326,7 +334,9 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
             ? `live · ${nodes.length} drawings classified by the model`
             : source === 'loading'
               ? 'classifying your drawing…'
-              : 'sample data · backend offline'}
+              : source === 'waiting'
+                ? 'sample data · your drawing has no vector yet'
+                : 'sample data · backend offline'}
         </span>
       </div>
 
