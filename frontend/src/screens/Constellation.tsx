@@ -158,7 +158,7 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
             answers: {},
             category: profile.class ?? undefined,
             note: profile.top_k?.[0]
-              ? `${Math.round(profile.top_k[0].p * 100)}% ${profile.top_k[0].class}`
+              ? `the model is ${Math.round(profile.top_k[0].p * 100)}% sure`
               : undefined,
           },
         };
@@ -577,7 +577,10 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
             </div>
 
             {(() => {
-              const shown = selectedNode?.item ?? yourProfile;
+              // prefer the live node: yourProfile is the local placeholder and
+              // carries none of the model's output
+              const shown =
+                selectedNode?.item ?? nodes.find((n) => n.id === YOU)?.item ?? yourProfile;
               const tier = tiers.get(shown.id)?.tier ?? 'common';
               const score = tiers.get(shown.id)?.score ?? 0;
               const group = clusterOf.get(shown.id);
@@ -655,10 +658,13 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
                       {CATEGORY_BY_ID.get(shown.category ?? '')?.label ??
                         shown.category ??
                         'something unclassified'}
-                      {shown.note && source === 'live' && (
-                        <span className="muted"> ({shown.note})</span>
-                      )}
+                      {source === 'live' && <span className="muted"> · classifier</span>}
                     </p>
+                    {QUESTIONS.some((question) => shown.answers[question.id]) && (
+                      <p className="muted" style={{ fontSize: 11 }}>
+                        answered by them, not the model
+                      </p>
+                    )}
                     {QUESTIONS.filter((question) => shown.answers[question.id]).map((question) => (
                       <p key={question.id} style={{ fontSize: 13 }}>
                         <span className="muted">{SHORT_LABEL[question.id] ?? question.id}: </span>
