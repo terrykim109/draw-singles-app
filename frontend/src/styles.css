@@ -916,6 +916,27 @@ p {
   fill: var(--ink);
 }
 
+/* live-vs-sample feed indicator */
+.feed {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  border: 2px solid var(--ink-muted);
+  border-radius: var(--wobble-sm);
+  padding: 3px 12px;
+  color: var(--ink-muted);
+}
+
+.feed--live {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.feed--loading {
+  border-style: dashed;
+}
+
 /* ---------- type board ---------- */
 
 .type-board {

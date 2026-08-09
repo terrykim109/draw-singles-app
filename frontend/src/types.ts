@@ -3,6 +3,8 @@ export type Screen = 'signup' | 'intro' | 'profile' | 'swipe' | 'done' | 'lab' |
 export type Account = {
   email: string;
   password: string;
+  /** backend account id; absent when the server was unreachable */
+  id?: string;
 };
 
 export type Profile = {
@@ -11,6 +13,10 @@ export type Profile = {
   answers: Record<string, string>;
   /** what the drawing depicts — the classifier's output, hand-set for now */
   category?: string;
+  /** the uploaded file, kept so it can be POSTed to the classifier */
+  file?: File | null;
+  /** id assigned by the backend once the profile is created */
+  id?: string;
 };
 
 /** a profile you encounter while swiping */

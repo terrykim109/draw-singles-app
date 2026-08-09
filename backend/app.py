@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
 import uuid
 import os
 import json
@@ -7,6 +8,15 @@ import re
 import base64
 from datetime import datetime
 from db import init_db, get_db
+from matching import (
+    ModelUnavailable,
+    assign_group,
+    classify_file,
+    features_are_current,
+    get_classifier,
+    model_status,
+    row_to_profile,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -50,30 +60,32 @@ def health():
     return jsonify({"status": "ok"})
 
 
+
 @app.route("/api/auth/register", methods=["POST"])
 def register():
     data = request.json
     email = data.get("email", "").strip().lower()
     password = data.get("password", "")
-    
+
     if not email or not password:
         return jsonify({"error": "email and password required"}), 400
-    
+
     user_id = str(uuid.uuid4())[:8]
     now = datetime.now().isoformat()
-    
+
     conn = get_db()
     try:
         conn.execute(
             "INSERT INTO users (id, email, password, name, answers, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, email, password, "", "{}", now)
+            # hashed, never the plaintext — same column, same response shape
+            (user_id, email, generate_password_hash(password), "", "{}", now)
         )
         conn.commit()
     except Exception:
         conn.close()
         return jsonify({"error": "email already exists"}), 409
     conn.close()
-    
+
     return jsonify({"id": user_id, "token": user_id}), 201
 
 
@@ -82,17 +94,16 @@ def login():
     data = request.json
     email = data.get("email", "").strip().lower()
     password = data.get("password", "")
-    
+
     conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM users WHERE email = ? AND password = ?",
-        (email, password)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     conn.close()
-    
-    if not row:
+
+    # look the password up by email and verify the hash — never match on the
+    # password in SQL, which only works if it is stored in the clear
+    if not row or not row["password"] or not check_password_hash(row["password"], password):
         return jsonify({"error": "invalid credentials"}), 401
-    
+
     return jsonify({"id": row["id"], "token": row["id"]})
 
 
@@ -104,33 +115,60 @@ def create_user():
     interested_in = request.form.get("interested_in", "male,female,other")
     
     drawing = request.files.get("drawing")
-    drawing_filename = None
+    photo_filename = None
     
     if drawing:
-        drawing_filename = f"{uuid.uuid4().hex}_{drawing.filename}"
-        drawing.save(os.path.join(UPLOAD_FOLDER, drawing_filename))
+        photo_filename = f"{uuid.uuid4().hex}_{drawing.filename}"
+        drawing.save(os.path.join(UPLOAD_FOLDER, photo_filename))
     
     user_id = str(uuid.uuid4())[:8]
     now = datetime.now().isoformat()
-    
+
+    # Classify inline so a new profile is immediately matchable. A model failure
+    # must not cost the user their signup, so it degrades to an unclassified
+    # profile that /api/reindex can pick up later.
+    result = {"status": "skipped", "reason": "no drawing"}
+    if photo_filename:
+        try:
+            result = classify_file(user_id, photo_filename)
+        except ModelUnavailable as exc:
+            result = {"status": "error", "reason": str(exc)}
+        except Exception as exc:
+            result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+
+    features = result.get("features") or {}
+
     conn = get_db()
     conn.execute("""
-        INSERT INTO users (id, name, age, gender, interested_in, drawing_filename,
+        INSERT INTO users (id, name, age, gender, interested_in, photo_filename,
                            drawing_class, drawing_confidence, drawing_features, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, name, age, gender, interested_in, drawing_filename,
-          None, 0.0, "{}", now))
+    """, (user_id, name, age, gender, interested_in, photo_filename,
+          result.get("class"), result.get("confidence") or 0.0,
+          json.dumps(features), now))
+
+    group_id = None
+    if result.get("status") == "ok":
+        try:
+            group_id = assign_group(conn, user_id, features)
+        except Exception as exc:
+            app.logger.warning("group assignment failed for %s: %s", user_id, exc)
+
     conn.commit()
     conn.close()
-    
+
     return jsonify({
         "id": user_id,
         "name": name,
         "age": age,
         "gender": gender,
         "interested_in": interested_in.split(","),
-        "drawing_url": f"/uploads/{drawing_filename}" if drawing_filename else None,
-        "drawing_class": None,
+        "drawing_url": f"/uploads/{photo_filename}" if photo_filename else None,
+        "drawing_class": result.get("class"),
+        "drawing_confidence": result.get("confidence"),
+        "classification_status": result.get("status"),
+        "classification_reason": result.get("reason"),
+        "group_id": group_id,
         "created_at": now
     }), 201
 
@@ -149,20 +187,51 @@ def create_profile():
     
     photo_filename = save_base64_image(photo_b64)
     now = datetime.now().isoformat()
-    
+
+    # Classify here, since this is where the drawing arrives. A model failure
+    # must not cost the user their profile — it degrades to unclassified, which
+    # POST /api/reindex can pick up later.
+    result = {"status": "skipped", "reason": "no drawing"}
+    if photo_filename:
+        try:
+            result = classify_file(user_id, photo_filename)
+        except ModelUnavailable as exc:
+            result = {"status": "error", "reason": str(exc)}
+        except Exception as exc:
+            result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+
+    features = result.get("features") or {}
+
     conn = get_db()
     conn.execute("""
-        UPDATE users SET name = ?, photo_filename = ?, answers = ?, created_at = ?
+        UPDATE users SET name = ?, photo_filename = COALESCE(?, photo_filename),
+               answers = ?, created_at = ?, drawing_class = ?,
+               drawing_confidence = ?, drawing_features = ?
         WHERE id = ?
-    """, (name, photo_filename, json.dumps(answers), now, user_id))
+    """, (name, photo_filename, json.dumps(answers), now, result.get("class"),
+          result.get("confidence") or 0.0, json.dumps(features), user_id))
+
+    group_id = None
+    if result.get("status") == "ok" and features.get("similarity_vector"):
+        try:
+            group_id = assign_group(conn, user_id, features)
+        except Exception as exc:
+            app.logger.warning("group assignment failed for %s: %s", user_id, exc)
+
     conn.commit()
     conn.close()
-    
+
     return jsonify({
         "id": user_id,
         "name": name,
         "photo": f"/uploads/{photo_filename}" if photo_filename else None,
         "answers": answers,
+        "drawing_class": result.get("class"),
+        "drawing_confidence": result.get("confidence"),
+        "classification_status": result.get("status"),
+        "classification_reason": result.get("reason"),
+        "top_k": features.get("top_k"),
+        "group_id": group_id,
         "created_at": now
     })
 
@@ -182,10 +251,18 @@ def get_my_profile():
     
     return jsonify(user_to_json(row))
 
+# Columns safe to hand out. `SELECT *` was fine until the table grew a password
+# column — it would now return credentials to any caller.
+PUBLIC_USER_COLUMNS = (
+    "id, name, age, gender, interested_in, photo_filename, drawing_class, "
+    "drawing_confidence, group_id, answers, created_at"
+)
+
+
 @app.route("/api/users", methods=["GET"])
 def list_users():
     conn = get_db()
-    rows = conn.execute("SELECT * FROM users").fetchall()
+    rows = conn.execute(f"SELECT {PUBLIC_USER_COLUMNS} FROM users").fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
@@ -193,7 +270,9 @@ def list_users():
 @app.route("/api/users/<user_id>", methods=["GET"])
 def get_user(user_id):
     conn = get_db()
-    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    row = conn.execute(
+        f"SELECT {PUBLIC_USER_COLUMNS} FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
     conn.close()
     if not row:
         return jsonify({"error": "not found"}), 404
@@ -204,7 +283,7 @@ def get_user(user_id):
 def get_matching_profile(user_id):
     conn = get_db()
     row = conn.execute("""
-        SELECT id, age, gender, interested_in, drawing_filename,
+        SELECT id, age, gender, interested_in, photo_filename,
                drawing_class, drawing_confidence, drawing_features
         FROM users WHERE id = ?
     """, (user_id,)).fetchone()
@@ -218,7 +297,7 @@ def get_matching_profile(user_id):
         "age": row["age"],
         "gender": row["gender"],
         "interested_in": row["interested_in"].split(",") if row["interested_in"] else [],
-        "drawing_filename": row["drawing_filename"],
+        "photo_filename": row["photo_filename"],
         "drawing_class": row["drawing_class"],
         "drawing_confidence": row["drawing_confidence"],
         "drawing_features": json.loads(row["drawing_features"] or "{}"),
@@ -228,15 +307,251 @@ def get_matching_profile(user_id):
 
 @app.route("/api/users/<user_id>/classify", methods=["POST"])
 def classify_drawing(user_id):
-    data = request.json
+    """Run the model on this user's drawing and store the result.
+
+    A JSON body still overrides it (that was the original contract), so an
+    external worker can push results in instead.
+    """
+    data = request.get_json(silent=True) or {}
+
     conn = get_db()
+    row = conn.execute(
+        "SELECT photo_filename FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "not found"}), 404
+
+    if data.get("features") or data.get("class"):
+        result = {
+            "status": "ok",
+            "class": data.get("class"),
+            "confidence": data.get("confidence", 0.0),
+            "features": data.get("features", {}),
+        }
+    else:
+        if not row["photo_filename"]:
+            conn.close()
+            return jsonify({"error": "user has no drawing"}), 400
+        try:
+            result = classify_file(user_id, row["photo_filename"])
+        except ModelUnavailable as exc:
+            conn.close()
+            return jsonify({"error": str(exc)}), 503
+
+    features = result.get("features") or {}
     conn.execute("""
         UPDATE users SET drawing_class = ?, drawing_confidence = ?, drawing_features = ?
         WHERE id = ?
-    """, (data.get("class"), data.get("confidence", 0.0), json.dumps(data.get("features", {})), user_id))
+    """, (result.get("class"), result.get("confidence") or 0.0,
+          json.dumps(features), user_id))
+
+    group_id = None
+    if result.get("status") == "ok" and features.get("similarity_vector"):
+        group_id = assign_group(conn, user_id, features)
+
     conn.commit()
     conn.close()
-    return jsonify({"status": "classified"})
+
+    return jsonify({
+        "status": result.get("status"),
+        "reason": result.get("reason"),
+        "class": result.get("class"),
+        "confidence": result.get("confidence"),
+        "group_id": group_id,
+        "top_k": features.get("top_k"),
+        "quality": features.get("quality"),
+    })
+
+
+@app.route("/api/users/<user_id>/matches", methods=["GET"])
+def get_similar_users(user_id):
+    """Rank everyone else by drawing similarity.
+
+    Orientation is a hard gate inside rank_matches, applied BEFORE scoring —
+    never folded into the similarity score.
+    """
+    try:
+        from sketch_matcher import rank_matches
+    except ImportError as exc:
+        return jsonify({"error": f"ML dependencies missing: {exc}"}), 503
+
+    limit = request.args.get("limit", default=20, type=int)
+    min_similarity = request.args.get("min_similarity", default=0.0, type=float)
+
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, name, age, gender, interested_in, photo_filename, "
+        "drawing_class, drawing_features, group_id FROM users"
+    ).fetchall()
+    conn.close()
+
+    by_id = {r["id"]: r for r in rows}
+    if user_id not in by_id:
+        return jsonify({"error": "not found"}), 404
+
+    query = row_to_profile(by_id[user_id])
+    if not (query.get("features") or {}).get("similarity_vector"):
+        return jsonify({"error": "user has no drawing vector — classify first"}), 409
+
+    candidates = [row_to_profile(r) for r in rows if r["id"] != user_id]
+    candidates = [c for c in candidates if (c.get("features") or {}).get("similarity_vector")]
+
+    try:
+        ranked = rank_matches(query, candidates, min_similarity=min_similarity, limit=limit)
+    except ValueError as exc:
+        # raised when vectors came from a different model or class ordering
+        return jsonify({"error": str(exc), "hint": "POST /api/reindex"}), 409
+
+    for match in ranked:
+        row = by_id.get(match["id"])
+        if row:
+            match["name"] = row["name"]
+            match["drawing_url"] = (
+                f"/uploads/{row['photo_filename']}" if row["photo_filename"] else None
+            )
+            match["group_id"] = row["group_id"]
+
+    return jsonify({
+        "id": user_id,
+        "class": query.get("class"),
+        "count": len(ranked),
+        "matches": ranked,
+    })
+
+
+@app.route("/api/vectors", methods=["GET"])
+def list_vectors():
+    """Everyone who has a drawing vector, for client-side graphing.
+
+    The similarity graph needs the vectors themselves (to build kNN links and
+    cluster), not just pairwise scores. 250 floats per user is small enough to
+    ship whole at this scale.
+    """
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, name, age, gender, interested_in, drawing_class, "
+        "drawing_confidence, photo_filename, drawing_features, group_id FROM users"
+    ).fetchall()
+    conn.close()
+
+    out = []
+    for row in rows:
+        features = json.loads(row["drawing_features"] or "{}")
+        vector = features.get("similarity_vector")
+        if not vector:
+            continue
+        out.append({
+            "id": row["id"],
+            "name": row["name"] or "someone",
+            "gender": row["gender"],
+            "interested_in": (row["interested_in"] or "").split(",") if row["interested_in"] else [],
+            "class": row["drawing_class"],
+            "confidence": row["drawing_confidence"],
+            "group_id": row["group_id"],
+            "drawing_url": f"/uploads/{row['photo_filename']}" if row["photo_filename"] else None,
+            "top_k": features.get("top_k", [])[:3],
+            "vector": vector,
+        })
+
+    return jsonify({
+        "count": len(out),
+        "vector_dim": len(out[0]["vector"]) if out else 0,
+        "model_version": out[0].get("model_version") if out else None,
+        "profiles": out,
+    })
+
+
+@app.route("/api/groups", methods=["GET"])
+def list_groups():
+    conn = get_db()
+    groups = conn.execute("SELECT id, label, size, created_at FROM groups").fetchall()
+    members = conn.execute(
+        "SELECT id, name, group_id, drawing_class, photo_filename FROM users "
+        "WHERE group_id IS NOT NULL"
+    ).fetchall()
+    conn.close()
+
+    by_group = {}
+    for row in members:
+        by_group.setdefault(row["group_id"], []).append({
+            "id": row["id"],
+            "name": row["name"],
+            "class": row["drawing_class"],
+            "drawing_url": f"/uploads/{row['photo_filename']}" if row["photo_filename"] else None,
+        })
+
+    return jsonify([
+        {
+            "id": g["id"],
+            "label": g["label"],
+            "size": len(by_group.get(g["id"], [])),
+            "created_at": g["created_at"],
+            "members": by_group.get(g["id"], []),
+        }
+        for g in groups
+    ])
+
+
+@app.route("/api/model", methods=["GET"])
+def model_info():
+    status = model_status()
+    return jsonify(status), (200 if status.get("available") else 503)
+
+
+@app.route("/api/reindex", methods=["POST"])
+def reindex():
+    """Recompute every stored vector with the current model and temperature.
+
+    Needed whenever the checkpoint or SKETCH_TEMPERATURE changes: old vectors stay
+    the same length and compare cleanly against new ones while meaning something
+    different. Pass ?force=1 to redo even the ones that already look current.
+    """
+    force = request.args.get("force", default=0, type=int)
+
+    try:
+        get_classifier()
+    except ModelUnavailable as exc:
+        return jsonify({"error": str(exc)}), 503
+
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, photo_filename, drawing_features FROM users "
+        "WHERE photo_filename IS NOT NULL"
+    ).fetchall()
+
+    # centroids are rebuilt from scratch, since every vector moved
+    conn.execute("DELETE FROM groups")
+    conn.execute("UPDATE users SET group_id = NULL")
+
+    done, skipped, failed = 0, 0, []
+    for row in rows:
+        stored = json.loads(row["drawing_features"] or "{}")
+        if not force and features_are_current(stored):
+            skipped += 1
+            continue
+        try:
+            result = classify_file(row["id"], row["photo_filename"])
+        except Exception as exc:
+            failed.append({"id": row["id"], "reason": f"{type(exc).__name__}: {exc}"})
+            continue
+
+        features = result.get("features") or {}
+        conn.execute(
+            "UPDATE users SET drawing_class = ?, drawing_confidence = ?, "
+            "drawing_features = ? WHERE id = ?",
+            (result.get("class"), result.get("confidence") or 0.0,
+             json.dumps(features), row["id"]),
+        )
+        if result.get("status") == "ok" and features.get("similarity_vector"):
+            assign_group(conn, row["id"], features)
+            done += 1
+        else:
+            failed.append({"id": row["id"], "reason": result.get("reason")})
+
+    conn.commit()
+    conn.close()
+    return jsonify({"reindexed": done, "skipped": skipped, "failed": failed})
 
 
 @app.route("/api/profiles/feed", methods=["GET"])

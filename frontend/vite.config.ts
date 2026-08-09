@@ -11,6 +11,11 @@ export default defineConfig({
         target: 'http://localhost:5001',
         changeOrigin: true,
       },
+      // uploaded drawings are served by Flask, not vite
+      '/uploads': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
     },
   },
 })

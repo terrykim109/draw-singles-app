@@ -10,7 +10,7 @@ import type { RawStroke } from './lab/strokes';
 import ColorLab from './components/ColorLab';
 import { MarginDoodles } from './components/Doodles';
 import type { Account, MatchProfile, Profile, Screen } from './types';
-import { api } from './api';
+import { api, completeProfile } from './api';
 
 const ORDER: Screen[] = ['signup', 'intro', 'profile', 'swipe', 'done'];
 
@@ -86,22 +86,43 @@ function App() {
 
         {screen === 'profile' && (
           <CreateProfile
-            onSubmit={async (next) => {
-              if (!userId) return;
-              await api.createProfile(userId, next);
+            onSubmit={(next) => {
+              // Show the next screen immediately and let the profile POST (which
+              // runs the classifier) finish in the background — a slow or dead
+              // backend must not block someone finishing their profile.
               setProfile(next);
               setScreen('swipe');
+
+              if (!userId) return;
+              completeProfile(userId, {
+                name: next.name,
+                photo: next.photo,
+                answers: next.answers,
+              })
+                .then((created: { id: string; drawing_class?: string | null }) => {
+                  setProfile((current) =>
+                    current
+                      ? {
+                          ...current,
+                          id: created.id,
+                          category: created.drawing_class ?? current.category,
+                        }
+                      : current
+                  );
+                })
+                .catch((error: unknown) => {
+                  console.warn('classification unavailable, staying on sample data', error);
+                });
             }}
             onBack={() => setScreen('intro')}
           />
         )}
 
-        {screen === 'swipe' && profile && userId && (
-          <Swipe
+        {screen === 'swipe' && profile && (
+          <Constellation
             key={swipeRound}
             you={profile}
-            userId={userId}
-            onDone={(matches) => {
+            onDone={(matches: MatchProfile[]) => {
               setLiked(matches);
               setSwipeRound((round) => round + 1);
               setScreen('done');
