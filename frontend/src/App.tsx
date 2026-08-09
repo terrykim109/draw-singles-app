@@ -12,8 +12,10 @@ import type { Account, MatchProfile, Profile, Screen } from './types';
 
 const ORDER: Screen[] = ['signup', 'intro', 'profile', 'swipe', 'done'];
 
-/** where the user was before hopping into the lab */
+/** where the user was before hopping into a tool */
 const LAB_RETURN: Screen = 'signup';
+
+const isTool = (screen: Screen) => screen === 'lab' || screen === 'trace';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('signup');
@@ -23,38 +25,31 @@ function App() {
   const [swipeRound, setSwipeRound] = useState(0);
   const [returnTo, setReturnTo] = useState<Screen>(LAB_RETURN);
 
+  /** remember only real app screens, so "back" never lands on another tool */
+  function openTool(tool: Screen) {
+    if (!isTool(screen)) setReturnTo(screen);
+    setScreen(tool);
+  }
+
   return (
     <>
       <MarginDoodles />
       <div className="app">
         <ColorLab />
 
-        <div className="lab-links">
-          {screen !== 'lab' && (
-            <button
-              className="lab-link"
-              type="button"
-              onClick={() => {
-                setReturnTo(screen);
-                setScreen('lab');
-              }}
-            >
+        {/* The tool screens carry their own "back to the app" button in the
+            same corner, so keep these chips off them entirely rather than
+            stacking two controls on top of each other. */}
+        {!isTool(screen) && (
+          <div className="lab-links">
+            <button className="lab-link" type="button" onClick={() => openTool('lab')}>
               ✎ animation lab
             </button>
-          )}
-          {screen !== 'trace' && (
-            <button
-              className="lab-link"
-              type="button"
-              onClick={() => {
-                setReturnTo(screen);
-                setScreen('trace');
-              }}
-            >
+            <button className="lab-link" type="button" onClick={() => openTool('trace')}>
               ✦ image → svg
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {screen === 'lab' && <Lab onBack={() => setScreen(returnTo)} />}
 

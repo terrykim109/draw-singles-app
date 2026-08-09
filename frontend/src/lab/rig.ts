@@ -359,21 +359,31 @@ function assemble(
       poly.length > 2 && len(sub(poly[0], poly[poly.length - 1])) < 0.22 * Math.max(lengths[i], 1)
   );
 
-  /* --- pass 1: pull out details (eyes, buttons, freckles) --------------- *
-   * Small closed marks sitting inside a bigger stroke ride along rigidly.
-   * Getting this wrong is what makes rigs look broken — eyes flying off a face. */
+  /* --- pass 1: pull out details (eyes, buttons, freckles, smiles) ------- *
+   * Any small mark sitting inside a closed shape is a feature OF that shape and
+   * rides it rigidly. Closed marks (eyes) and open ones (a smile, an eyebrow, a
+   * nose) both count — a mouth is a short open curve, and treating it as a limb
+   * is what made the face wave back at you. Open marks need to be relatively
+   * smaller than closed ones before we swallow them, so that a real limb drawn
+   * across a body outline stays a limb. */
   const detailParent = new Map<number, number>();
   strokes.forEach((_, i) => {
-    if (!closed[i]) return;
     if (areaOf(boxes[i]) > 0.14 * drawingArea) return;
+    // Compare extents, not areas: a limb drawn straight across a body has a
+    // tiny bounding-box area but spans the whole shape, and an area ratio
+    // would swallow it as a feature.
+    const maxSpan = closed[i] ? 0.7 : 0.6;
 
     let host: number | null = null;
     let hostArea = Infinity;
     strokes.forEach((__, j) => {
       if (i === j) return;
-      const outerArea = areaOf(boxes[j]);
-      if (outerArea < areaOf(boxes[i]) * 1.6) return;
-      if (!contains(boxes[j], boxes[i], 6)) return;
+      if (!closed[j]) return; // only a closed shape can hold a feature
+      const outer = boxes[j];
+      const inner = boxes[i];
+      if (inner.w > outer.w * maxSpan || inner.h > outer.h * maxSpan) return;
+      if (!contains(outer, inner, 6)) return;
+      const outerArea = areaOf(outer);
       if (outerArea < hostArea) {
         host = j;
         hostArea = outerArea;

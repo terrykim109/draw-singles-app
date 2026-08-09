@@ -133,8 +133,13 @@ export const PRESETS: Preset[] = [
     bone: (bone, ctx) => {
       if (bone.role !== 'appendage') return null;
       const reach = clamp(bone.length / Math.max(ctx.maxLength, 1), 0.25, 1);
+      // You wave with the limbs that aren't holding you up. Anything hanging
+      // straight down off its joint is a leg, whatever species it belongs to.
+      const standing = clamp(bone.direction.y, 0, 1);
       const amplitude =
-        ((9 + 17 * reach) / (1 + 0.35 * (bone.depth - 1))) * straightness(bone);
+        ((9 + 17 * reach) / (1 + 0.35 * (bone.depth - 1))) *
+        straightness(bone) *
+        (1 - 0.78 * standing);
       const duration = 1000 + reach * 500;
       return {
         keyframes: swing(amplitude),

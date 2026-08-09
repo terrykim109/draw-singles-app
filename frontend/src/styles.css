@@ -777,6 +777,13 @@ p {
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
+  /* the container covers a chunk of the top-right corner; without this its
+     padding and gaps swallow clicks meant for whatever sits underneath */
+  pointer-events: none;
+}
+
+.lab-links > * {
+  pointer-events: auto;
 }
 
 .lab-link {
