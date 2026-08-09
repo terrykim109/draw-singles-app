@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { createAccount, login } from '../api';
 import { PencilDoodle, SparkDoodle, SquiggleDoodle } from '../components/Doodles';
 import type { Account } from '../types';
 
@@ -11,10 +12,13 @@ export default function SignUp({ onSubmit }: SignUpProps) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<'signup' | 'login'>('signup');
 
-  const canSubmit = email.trim() !== '' && password !== '' && confirm !== '';
+  const canSubmit =
+    email.trim() !== '' && password !== '' && (mode === 'login' || confirm !== '');
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!email.includes('@')) {
       setError('that does not look like an email');
@@ -24,12 +28,30 @@ export default function SignUp({ onSubmit }: SignUpProps) {
       setError('password needs at least 8 characters');
       return;
     }
-    if (password !== confirm) {
+    if (mode === 'signup' && password !== confirm) {
       setError('passwords do not match');
       return;
     }
+
     setError(null);
-    onSubmit({ email: email.trim(), password });
+    setBusy(true);
+    try {
+      const account =
+        mode === 'signup'
+          ? await createAccount(email.trim(), password)
+          : await login(email.trim(), password);
+      onSubmit({ email: email.trim(), password, id: account.id });
+    } catch (err) {
+      // no backend? let them through anyway rather than dead-ending the demo
+      const message = err instanceof Error ? err.message : 'could not reach the server';
+      if (message === 'Failed to fetch') {
+        onSubmit({ email: email.trim(), password });
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -92,6 +114,7 @@ export default function SignUp({ onSubmit }: SignUpProps) {
             />
           </div>
 
+          {mode === 'signup' && (
           <div className="field">
             <label htmlFor="confirm">say it again</label>
             <input
@@ -104,17 +127,25 @@ export default function SignUp({ onSubmit }: SignUpProps) {
               onChange={(e) => setConfirm(e.target.value)}
             />
           </div>
+          )}
 
           {error && <p className="error">{error}</p>}
 
-          <button className="btn btn--primary" type="submit" disabled={!canSubmit}>
-            Create account
+          <button className="btn btn--primary" type="submit" disabled={!canSubmit || busy}>
+            {busy ? 'one moment…' : mode === 'signup' ? 'Create account' : 'Log in'}
           </button>
 
           <p className="muted center" style={{ fontSize: 13 }}>
-            already drawing here?{' '}
-            <button className="btn btn--ghost" type="button">
-              log in
+            {mode === 'signup' ? 'already drawing here?' : 'new here?'}{' '}
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => {
+                setMode(mode === 'signup' ? 'login' : 'signup');
+                setError(null);
+              }}
+            >
+              {mode === 'signup' ? 'log in' : 'sign up'}
             </button>
           </p>
         </div>

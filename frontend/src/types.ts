@@ -3,6 +3,8 @@ export type Screen = 'signup' | 'intro' | 'profile' | 'swipe' | 'done' | 'lab' |
 export type Account = {
   email: string;
   password: string;
+  /** backend account id; absent when the server was unreachable */
+  id?: string;
 };
 
 export type Profile = {

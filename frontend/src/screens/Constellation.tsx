@@ -611,10 +611,18 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
                   </div>
 
                   <div className="lab-tools">
-                    <span className={`tier tier--${tier}`}>{tier}</span>
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      novelty {(score * 100).toFixed(0)}
-                    </span>
+                    {nodes.length >= 4 ? (
+                      <>
+                        <span className={`tier tier--${tier}`}>{tier}</span>
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          novelty {(score * 100).toFixed(0)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        rarity needs a crowd — {nodes.length} of 4 drawings so far
+                      </span>
+                    )}
                     {match !== null && (
                       <span className="muted" style={{ fontSize: 12 }}>
                         · {(match * 100).toFixed(0)}% like you
@@ -634,17 +642,22 @@ export default function Constellation({ you, onDone }: ConstellationProps) {
                   <div className="stack" style={{ gap: 8 }}>
                     <p style={{ fontSize: 13 }}>
                       <span className="muted">drew: </span>
-                      {CATEGORY_BY_ID.get(shown.category ?? '')?.label ?? 'something unclassified'}
+                      {CATEGORY_BY_ID.get(shown.category ?? '')?.label ??
+                        shown.category ??
+                        'something unclassified'}
+                      {shown.note && source === 'live' && (
+                        <span className="muted"> ({shown.note})</span>
+                      )}
                     </p>
-                    {QUESTIONS.map((question) => (
+                    {QUESTIONS.filter((question) => shown.answers[question.id]).map((question) => (
                       <p key={question.id} style={{ fontSize: 13 }}>
                         <span className="muted">{SHORT_LABEL[question.id] ?? question.id}: </span>
-                        {shown.answers[question.id] ?? '—'}
+                        {shown.answers[question.id]}
                       </p>
                     ))}
                   </div>
 
-                  {shown.id === YOU && (
+                  {shown.id === YOU && source !== 'live' && (
                     <div className="panel">
                       <div className="stack" style={{ gap: 8 }}>
                         <p className="muted" style={{ fontSize: 12 }}>

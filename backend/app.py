@@ -365,7 +365,7 @@ def classify_drawing(user_id):
 
 
 @app.route("/api/users/<user_id>/matches", methods=["GET"])
-def get_matches(user_id):
+def get_similar_users(user_id):
     """Rank everyone else by drawing similarity.
 
     Orientation is a hard gate inside rank_matches, applied BEFORE scoring —
@@ -380,7 +380,10 @@ def get_matches(user_id):
     min_similarity = request.args.get("min_similarity", default=0.0, type=float)
 
     conn = get_db()
-    rows = conn.execute("SELECT * FROM users").fetchall()
+    rows = conn.execute(
+        "SELECT id, name, age, gender, interested_in, photo_filename, "
+        "drawing_class, drawing_features, group_id FROM users"
+    ).fetchall()
     conn.close()
 
     by_id = {r["id"]: r for r in rows}
