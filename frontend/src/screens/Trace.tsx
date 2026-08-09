@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
+import type { RawStroke } from '../lab/strokes';
+import type { Pt } from '../lab/geometry';
 import {
   DEFAULT_TRACE_OPTIONS,
   buildStrokeSvgDoc,
@@ -20,6 +22,7 @@ const MAX_CARDS = 60;
 
 type TraceProps = {
   onBack: () => void;
+  onAnimate?: (strokes: RawStroke[]) => void;
 };
 
 function download(name: string, content: string, type: string) {
@@ -32,7 +35,7 @@ function download(name: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function Trace({ onBack }: TraceProps) {
+export default function Trace({ onBack, onAnimate }: TraceProps) {
   const [source, setSource] = useState<{
     url: string;
     image: HTMLImageElement;
@@ -151,6 +154,42 @@ export default function Trace({ onBack }: TraceProps) {
 
   const set = <K extends keyof TraceOptions>(key: K, value: TraceOptions[K]) =>
     setOptions((prev) => ({ ...prev, [key]: value }));
+
+  /** convert traced strokes → RawStroke[] for the animation lab, scaled to fit 460×480 */
+  function buildAnimateStrokes(): RawStroke[] | null {
+    if (!result || result.strokes.length === 0) return null;
+    const LAB_W = 460;
+    const LAB_H = 480;
+    const pad = 40;
+    const bw = result.box.w || 1;
+    const bh = result.box.h || 1;
+    const scale = Math.min((LAB_W - pad * 2) / bw, (LAB_H - pad * 2) / bh, 1);
+    const ox = (LAB_W - bw * scale) / 2 - result.box.x * scale;
+    const oy = (LAB_H - bh * scale) / 2 - result.box.y * scale;
+
+    const tr = (p: Pt): Pt => ({ x: p.x * scale + ox, y: p.y * scale + oy });
+
+    return result.strokes.map((s) => {
+      if (s.dot) {
+        // turn a dot into a small ring the lab can see
+        const cx = s.dot.cx * scale + ox;
+        const cy = s.dot.cy * scale + oy;
+        const r = Math.max(2, s.dot.r * scale);
+        const n = 14;
+        const ring: Pt[] = [];
+        for (let j = 0; j <= n; j++) {
+          const a = (j / n) * Math.PI * 2;
+          ring.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+        }
+        return { id: s.id, points: ring, width: options.strokeWidth };
+      }
+      return {
+        id: s.id,
+        points: s.points.map(tr),
+        width: options.strokeWidth,
+      };
+    });
+  }
 
   return (
     <div className="shell" style={{ maxWidth: 1120, gap: 26 }}>
@@ -378,6 +417,20 @@ export default function Trace({ onBack }: TraceProps) {
               <button className="btn btn--soft" type="button" disabled={!result} onClick={copySvg}>
                 {copied ? 'copied ✓' : 'copy svg code'}
               </button>
+              {onAnimate && (
+                <button
+                  className="btn btn--primary"
+                  style={{ width: 'auto', padding: '10px 18px', fontSize: 14 }}
+                  type="button"
+                  disabled={!result || result.strokes.length === 0}
+                  onClick={() => {
+                    const strokes = buildAnimateStrokes();
+                    if (strokes) onAnimate(strokes);
+                  }}
+                >
+                  ✎ animate these strokes
+                </button>
+              )}
               <span className="muted" style={{ fontSize: 12 }}>
                 ink {Math.round((result?.inkRatio ?? 0) * 100)}% · threshold {result?.threshold}
               </span>

@@ -766,6 +766,265 @@ p {
   }
 }
 
+/* ---------- similarity graph ---------- */
+
+.graph-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 26px;
+  align-items: start;
+}
+
+.graph-svg {
+  width: 100%;
+  display: block;
+  background: var(--white);
+  border: 2px dashed var(--ink-muted);
+  border-radius: var(--wobble-md);
+  touch-action: none;
+  cursor: grab;
+}
+
+.graph-svg:active {
+  cursor: grabbing;
+}
+
+.graph-link {
+  stroke: var(--ink);
+}
+
+.graph-node {
+  cursor: pointer;
+}
+
+.graph-node__halo {
+  fill: var(--paper);
+}
+
+.graph-node__ring {
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: 2.5;
+}
+
+/* rarity reads as ring treatment — no legend needed to feel the difference */
+.graph-node--uncommon .graph-node__ring {
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+
+.graph-node--rare .graph-node__ring {
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-dasharray: 9 5;
+}
+
+.graph-node--legendary .graph-node__ring {
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-dasharray: 3 5;
+}
+
+.graph-node--you .graph-node__ring {
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-dasharray: none;
+}
+
+.graph-node--you .graph-node__halo {
+  fill: var(--surface);
+}
+
+.graph-node__name {
+  font-family: var(--mono);
+  font-size: 12px;
+  fill: var(--ink);
+}
+
+.graph-node__heart {
+  font-size: 18px;
+  fill: var(--ink);
+}
+
+/* ---------- dendrogram ---------- */
+
+.dendro {
+  width: 100%;
+  display: block;
+  background: var(--white);
+  border: 2px dashed var(--ink-muted);
+  border-radius: var(--wobble-md);
+  touch-action: none;
+}
+
+.dendro__group {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.dendro__cut {
+  cursor: ns-resize;
+}
+
+/* fat invisible line so the cut is easy to grab */
+.dendro__cut-hit {
+  stroke: transparent;
+  stroke-width: 22;
+}
+
+.dendro__cut-line {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 2 7;
+  stroke-linecap: round;
+  opacity: 0.7;
+}
+
+.dendro__cut-tag {
+  fill: var(--ink);
+}
+
+.dendro__cut-text {
+  font-family: var(--mono);
+  font-size: 11px;
+  fill: var(--white);
+}
+
+.dendro__leaf {
+  cursor: pointer;
+}
+
+.dendro__leaf-halo {
+  fill: var(--paper);
+}
+
+.dendro__leaf-ring {
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: 2;
+}
+
+.dendro__leaf--on .dendro__leaf-ring {
+  stroke: var(--ink);
+  stroke-width: 4;
+}
+
+.dendro__leaf-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  fill: var(--ink);
+}
+
+/* ---------- type board ---------- */
+
+.type-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.type-card {
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-md);
+  background: var(--white);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.type-card--mine {
+  background: var(--surface);
+  box-shadow: 4px 4px 0 var(--ink-muted);
+}
+
+.type-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.type-card__name {
+  font-family: var(--hand);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.type-card__members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.type-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-sm);
+  padding: 3px 8px 3px 3px;
+  cursor: pointer;
+}
+
+.type-chip img {
+  width: 26px;
+  height: 26px;
+  object-fit: cover;
+  border-radius: 7px 3px 6px 4px / 4px 6px 3px 7px;
+  display: block;
+}
+
+.type-chip--on {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.type-chip em {
+  font-style: normal;
+}
+
+.type-label {
+  font-family: var(--hand);
+  font-size: 20px;
+}
+
+.graph-portrait {
+  width: 100%;
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-md);
+  display: block;
+}
+
+.tier {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-sm);
+  padding: 3px 10px;
+  background: var(--paper);
+}
+
+.tier--uncommon {
+  background: var(--surface);
+}
+
+.tier--rare {
+  background: var(--surface);
+  border-style: dashed;
+}
+
+.tier--legendary {
+  background: var(--ink);
+  color: var(--white);
+}
+
 /* ---------- animation lab ---------- */
 
 .lab-links {
@@ -1093,6 +1352,7 @@ p {
 @media (max-width: 900px) {
   .split,
   .lab-grid,
+  .graph-grid,
   .profile-grid {
     grid-template-columns: 1fr;
     gap: 36px;
