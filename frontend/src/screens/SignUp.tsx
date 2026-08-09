@@ -84,8 +84,8 @@ export default function SignUp({ onSubmit }: SignUpProps) {
       <form className="card card--tilt" onSubmit={handleSubmit} noValidate>
         <div className="stack" style={{ gap: 22 }}>
           <div className="stack" style={{ gap: 2 }}>
-            <p className="eyebrow">new here</p>
-            <h2>make an account</h2>
+              <p className="eyebrow">{mode === 'signup' ? 'new here' : 'welcome back'}</p>
+              <h2>{mode === 'signup' ? 'make an account' : 'Welcome back!'}</h2>
           </div>
 
           <div className="field">
