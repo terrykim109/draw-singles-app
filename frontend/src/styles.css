@@ -1509,3 +1509,93 @@ p {
     --card-w: min(300px, calc(100vw - 88px));
   }
 }
+
+/* ---------- chat ---------- */
+
+.chat-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.chat-peer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-peer img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+}
+
+.chat-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 18px;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 6px;
+}
+
+.chat-bubble {
+  align-self: flex-start;
+  background: var(--white);
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-sm);
+  padding: 10px 14px;
+  max-width: 80%;
+}
+
+.chat-bubble--me {
+  align-self: flex-end;
+  background: var(--surface);
+}
+
+.chat-time {
+  display: block;
+  font-size: 10px;
+  color: var(--ink-muted);
+  margin-top: 4px;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.chat-input-row .input {
+  flex: 1;
+}
+
+.match-card--clickable {
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.match-card--clickable:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 var(--ink-muted);
+}
+
+.match-card__action {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: 4px;
+}

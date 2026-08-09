@@ -1,3 +1,5 @@
+from unittest import result
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,6 +8,10 @@ import os
 import json
 import re
 import base64
+import atexit
+import subprocess
+import sys
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 from db import init_db, get_db
 from matching import (
@@ -137,8 +143,11 @@ def create_user():
             result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
 
     features = result.get("features") or {}
+    from social_layer import augment_features
+    features = augment_features(features)
 
     conn = get_db()
+    
     conn.execute("""
         INSERT INTO users (id, name, age, gender, interested_in, photo_filename,
                            drawing_class, drawing_confidence, drawing_features, created_at)
@@ -201,8 +210,11 @@ def create_profile():
             result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
 
     features = result.get("features") or {}
+    from social_layer import augment_features
+    features = augment_features(features)
 
     conn = get_db()
+    
     conn.execute("""
         UPDATE users SET name = ?, photo_filename = COALESCE(?, photo_filename),
                answers = ?, created_at = ?, drawing_class = ?,
@@ -340,6 +352,8 @@ def classify_drawing(user_id):
             return jsonify({"error": str(exc)}), 503
 
     features = result.get("features") or {}
+    from social_layer import augment_features
+    features = augment_features(features)
     conn.execute("""
         UPDATE users SET drawing_class = ?, drawing_confidence = ?, drawing_features = ?
         WHERE id = ?
@@ -411,6 +425,12 @@ def get_similar_users(user_id):
                 f"/uploads/{row['photo_filename']}" if row["photo_filename"] else None
             )
             match["group_id"] = row["group_id"]
+
+    try:
+        from social_layer import blend_matches
+        ranked = blend_matches(query, ranked, by_id)
+    except Exception:
+        pass
 
     return jsonify({
         "id": user_id,
@@ -498,6 +518,68 @@ def model_info():
     status = model_status()
     return jsonify(status), (200 if status.get("available") else 503)
 
+@app.route("/api/chats/messages", methods=["GET"])
+def get_chat_messages():
+    user_a = request.args.get("user_a")
+    user_b = request.args.get("user_b")
+    if not user_a or not user_b:
+        return jsonify({"error": "user_a and user_b required"}), 400
+
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, sender_id, recipient_id, body, created_at
+        FROM messages
+        WHERE (sender_id = ? AND recipient_id = ?)
+           OR (sender_id = ? AND recipient_id = ?)
+        ORDER BY created_at ASC
+    """, (user_a, user_b, user_b, user_a)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/chats/messages", methods=["POST"])
+def send_chat_message():
+    data = request.json
+    sender = data.get("from")
+    recipient = data.get("to")
+    body = data.get("body", "").strip()
+
+    if not sender or not recipient or not body:
+        return jsonify({"error": "from, to, body required"}), 400
+
+    now = datetime.now().isoformat()
+    a, b = sorted([sender, recipient])
+    thread = f"{a}_{b}"
+
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO messages (sender_id, recipient_id, body, created_at)
+        VALUES (?, ?, ?, ?)
+    """, (sender, recipient, body, now))
+
+    existing = conn.execute(
+        "SELECT message_count FROM social_feedback WHERE thread_id = ?",
+        (thread,)
+    ).fetchone()
+
+    if existing:
+        conn.execute("""
+            UPDATE social_feedback
+            SET message_count = message_count + 1,
+                last_message_at = ?,
+                outcome = 'active'
+            WHERE thread_id = ?
+        """, (now, thread))
+    else:
+        conn.execute("""
+            INSERT INTO social_feedback
+            (user_a, user_b, thread_id, message_count, last_message_at, outcome, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (a, b, thread, 1, now, 'active', now))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"}), 201
 
 @app.route("/api/reindex", methods=["POST"])
 def reindex():
@@ -537,12 +619,15 @@ def reindex():
             continue
 
         features = result.get("features") or {}
+        from social_layer import augment_features
+        features = augment_features(features)
         conn.execute(
             "UPDATE users SET drawing_class = ?, drawing_confidence = ?, "
             "drawing_features = ? WHERE id = ?",
             (result.get("class"), result.get("confidence") or 0.0,
              json.dumps(features), row["id"]),
         )
+        
         if result.get("status") == "ok" and features.get("similarity_vector"):
             assign_group(conn, row["id"], features)
             done += 1
@@ -645,6 +730,36 @@ def get_matches():
 @app.route("/uploads/<path:filename>")
 def serve_upload(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+# ---------------------------------------------------------------------------
+# Automatic social model retraining
+# ---------------------------------------------------------------------------
+
+def scheduled_retrain():
+    script = os.path.join(os.path.dirname(__file__), "train_social.py")
+    if not os.path.exists(script):
+        app.logger.warning("train_social.py not found, skipping scheduled retrain")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, script],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(__file__),
+            timeout=300,
+        )
+        if result.returncode == 0:
+            app.logger.info("Scheduled social retrain succeeded")
+        else:
+            app.logger.warning("Scheduled social retrain failed: %s", result.stderr)
+    except Exception as exc:
+        app.logger.error("Scheduled social retrain exception: %s", exc)
+
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=scheduled_retrain, trigger="cron", hour=3, minute=0)
+scheduler.start()
+atexit.register(lambda: scheduler.shutdown())
 
 if __name__ == "__main__":
     app.run(debug=True, port=5001)

@@ -47,7 +47,13 @@ export default function Swipe({ you, userId, onDone }: SwipeProps) {
     pos.current = to;
     setOffset(to);
     setHistory((prev) => [...prev, { profile: top, liked: direction === 'right' }]);
-    if (direction === 'right') setLiked((prev) => [...prev, top]);
+    if (direction === 'right') {
+      setLiked((prev) => {
+        // Guard: if we already have this person, don't add again
+        if (prev.some((p) => p.id === top.id)) return prev;
+        return [...prev, top];
+      });
+    }
     window.setTimeout(() => {
       setDeck((prev) => prev.slice(1));
       pos.current = { x: 0, y: 0 };
@@ -72,16 +78,21 @@ export default function Swipe({ you, userId, onDone }: SwipeProps) {
     api.getFeed(userId).then(setDeck);
   }
 
-  // keyboard: ← nope · → like · ↑ undo
+  // Use refs so the listener always calls the latest functions without re-attaching every render
+  const flyRef = useRef(fly);
+  const undoRef = useRef(undo);
+  flyRef.current = fly;
+  undoRef.current = undo;
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'ArrowLeft') fly('left');
-      else if (e.key === 'ArrowRight') fly('right');
-      else if (e.key === 'ArrowUp') undo();
+      if (e.key === 'ArrowLeft') flyRef.current('left');
+      else if (e.key === 'ArrowRight') flyRef.current('right');
+      else if (e.key === 'ArrowUp') undoRef.current();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (!top || busy.current || e.button !== 0) return;

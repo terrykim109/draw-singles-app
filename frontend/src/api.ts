@@ -190,4 +190,16 @@ export const api = {
 
   getMatches: (user_id: string) =>
     fetch(`${API}/matches?user_id=${user_id}`).then((r) => r.json()),
+
+  getMessages: (userA: string, userB: string) =>
+    fetch(`${API}/chats/messages?user_a=${encodeURIComponent(userA)}&user_b=${encodeURIComponent(userB)}`)
+      .then((r) => r.json()),
+
+  sendMessage: (from: string, to: string, body: string) =>
+    fetch(`${API}/chats/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to, body }),
+    }).then((r) => r.json()),
+
 };
