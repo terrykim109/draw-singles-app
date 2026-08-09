@@ -13,7 +13,7 @@ import { MarginDoodles } from './components/Doodles';
 import type { Account, MatchProfile, Profile, Screen } from './types';
 import { completeProfile } from './api';
 
-const ORDER: Screen[] = ['signup', 'intro', 'profile', 'swipe', 'done'];
+const ORDER: Screen[] = ['signup', 'intro', 'profile',  'constellation','swipe', 'done'];
 
 const LAB_RETURN: Screen = 'signup';
 
@@ -96,7 +96,7 @@ function App() {
               // runs the classifier) finish in the background — a slow or dead
               // backend must not block someone finishing their profile.
               setProfile(next);
-              setScreen('swipe');
+              setScreen('constellation'); 
 
               if (!userId) return;
               completeProfile(userId, {
@@ -120,6 +120,17 @@ function App() {
                 });
             }}
             onBack={() => setScreen('intro')}
+          />
+        )}
+
+        {screen === 'constellation' && profile && userId && (
+          <Constellation
+            you={profile}
+            userId={userId}
+            onDone={(liked) => {
+              setLiked(liked);
+              setScreen('swipe');
+            }}
           />
         )}
 

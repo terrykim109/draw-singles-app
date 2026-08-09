@@ -1,4 +1,4 @@
-export type Screen = 'signup' | 'intro' | 'profile' | 'swipe' | 'done' | 'lab' | 'trace';
+export type Screen = 'signup' | 'intro' | 'profile' | 'constellation'| 'swipe' | 'done' | 'lab' | 'trace';
 
 export type Account = {
   email: string;
