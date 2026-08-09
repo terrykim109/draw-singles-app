@@ -1,12 +1,12 @@
 ## Draw Singles App
 
-A drawing-based matching app. No selfies, no filters — you draw a profile picture, answer three questions, and get matched with people whose drawings (and conversation styles) align with yours. The app includes a real-time chat system, an optional social-compatibility ML layer that learns from chat outcomes, an animation lab for doodles, and an image-to-SVG tracer.
+A drawing-based matching app. No selfies, no filters — you draw, answer three questions, and get matched with people whose drawings (and conversation styles) align with yours. A trained PyTorch visual encoder (`sketch_matcher`) reads every stroke and turns it into a 250-dimensional similarity vector; that vector drives the groups, the constellation graph, and the swipe deck. The app also includes a real-time chat system, an optional lightweight social-compatibility ML layer that learns from chat outcomes to refine match ranking, an animation lab for doodles, and an image-to-SVG tracer.
 
 ## Tech Stack
 | Layer           | Stack                                                                      |
 | --------------- | -------------------------------------------------------------------------- |
 | **Backend**     | Flask, SQLite, Flask-CORS, APScheduler                                     |
-| **ML (Visual)** | Main ML Classifier turns drawings into 250-D similarity vectors            |
+| **ML (Visual)** | Main ML Classifier that turns drawings into 250-D similarity vectors            |
 | **ML (Social)** | Optional 2-layer projection network that learns from chat history          |
 | **Frontend**    | React 18, TypeScript, Vite                                                 |
 | **Styling**     | Vanilla CSS with hand-drawn design tokens                                  |
