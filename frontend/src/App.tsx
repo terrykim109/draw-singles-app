@@ -123,7 +123,7 @@ function App() {
         )}
 
         {screen === 'swipe' && profile && (
-          <Constellation
+          <Swipe
             key={swipeRound}
             you={profile}
             onDone={(matches: MatchProfile[]) => {
