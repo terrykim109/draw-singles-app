@@ -6,9 +6,10 @@ type DoneProps = {
   liked: MatchProfile[];
   onKeepSwiping: () => void;
   onRestart: () => void;
+  onChat: (match: MatchProfile) => void;
 };
 
-export default function Done({ profile, liked, onKeepSwiping, onRestart }: DoneProps) {
+export default function Done({ profile, liked, onKeepSwiping, onRestart, onChat }: DoneProps) {
   return (
     <div className="shell shell--narrow">
       <div className="stack center" style={{ gap: 8, alignItems: 'center' }}>
@@ -32,9 +33,17 @@ export default function Done({ profile, liked, onKeepSwiping, onRestart }: DoneP
             {liked.length > 0 && (
               <div className="matches">
                 {liked.map((match) => (
-                  <div className="match-card" key={match.id}>
+                  <div
+                    className="match-card match-card--clickable"
+                    key={match.id}
+                    onClick={() => onChat(match)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && onChat(match)}
+                  >
                     <img src={match.photo ?? undefined} alt={`${match.name}'s drawing`} />
                     <p className="match-card__name">{match.name}</p>
+                    <span className="match-card__action">say hi →</span>
                   </div>
                 ))}
               </div>

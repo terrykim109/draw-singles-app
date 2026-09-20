@@ -1,4 +1,5 @@
-import { ALL_TAGS, CATEGORIES, CATEGORY_BY_ID, typeNameForTags } from './categories';
+import { ALL_TAGS, CATEGORIES, CATEGORY_BY_ID } from './categories';
+import { dominantSupertype, supertypeOf, type Supertype } from './classTypes';
 import { QUESTIONS, type Profile } from './types';
 
 /**
@@ -77,7 +78,7 @@ export type Link = { a: string; b: string; similarity: number };
  * neighbours. Connecting everything to everything is a hairball; kNN keeps the
  * shape of the population readable.
  */
-export function knnLinks<T>(nodes: Node<T>[], k = 3): Link[] {
+export function knnLinks<T>(nodes: Node<T>[], k = 3, minSimilarity = 0): Link[] {
   const seen = new Map<string, Link>();
 
   for (const node of nodes) {
@@ -85,7 +86,10 @@ export function knnLinks<T>(nodes: Node<T>[], k = 3): Link[] {
       .filter((other) => other.id !== node.id)
       .map((other) => ({ other, score: similarity(node.vector, other.vector) }))
       .sort((x, y) => y.score - x.score)
-      .slice(0, k);
+      .slice(0, k)
+      // a link across classes scores ~0.07 — drawing it says nothing and the
+      // canvas turns to spaghetti once there are more than a handful of people
+      .filter(({ score }) => score >= minSimilarity);
 
     for (const { other, score } of ranked) {
       const key = [node.id, other.id].sort().join('|');
@@ -267,29 +271,25 @@ export function clusterNodes<T extends Profile & { id: string }>(
   return cutDendrogram(tree, k).map((part, id) => {
     const members = leavesOf(part);
     const profiles = members.map((m) => m.item);
-    const tags = sharedTags(profiles);
+    const classes = profiles.map((p) => p.category);
+    // Name from the supertype the members mostly share. Tags alone let a single
+    // taxonomy-matching member (one cat) name a group of twenty aeroplanes.
+    const name = `${dominantSupertype(classes)} type`;
+
+    // subtitle: what people in here actually drew, commonest first
+    const counts = new Map<string, number>();
+    for (const c of classes) if (c) counts.set(c, (counts.get(c) ?? 0) + 1);
+    const drawn = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+
     return {
       id,
       members,
       centroid: centroidOf(members),
       traits: dominantTraits(profiles),
-      tags,
-      // Live classes come from the model's 250-label vocabulary, which has no
-      // entry in the local tag taxonomy — name those groups after whatever the
-      // members actually drew.
-      name: tags.length > 0 ? typeNameForTags(tags) : classTypeName(profiles),
+      tags: drawn.length > 0 ? drawn : sharedTags(profiles),
+      name,
     };
   });
-}
-
-/** name a group after the class its members drew most often */
-function classTypeName(profiles: Profile[]): string {
-  const counts = new Map<string, number>();
-  for (const profile of profiles) {
-    if (profile.category) counts.set(profile.category, (counts.get(profile.category) ?? 0) + 1);
-  }
-  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-  return top ? `${top[0]} type` : 'unsorted type';
 }
 
 /** the tags a group holds in common, most widely shared first */
@@ -330,4 +330,49 @@ export function sharedTraits(a: Profile, b: Profile): string[] {
   return QUESTIONS.filter((q) => a.answers[q.id] && a.answers[q.id] === b.answers[q.id]).map(
     (q) => b.answers[q.id]
   );
+}
+
+
+/**
+ * Group by the classifier's label, not by clustering the vector.
+ *
+ * Measured on real data: same-class pairs score ~0.999 and *every* different-class
+ * pair scores ~0.07, related or not — a cat sits as far from a rabbit as from a
+ * candle. Recomputing from the stored logits at temperatures from 1.5 to 30 moves
+ * the same-supertype/different-supertype gap by under 0.01, so the 250-dim
+ * probability vector carries class identity and no semantic structure. Clustering
+ * it can only recover "same class", and forcing three groups chains everything
+ * into one blob.
+ *
+ * The vector keeps doing what it is good at — neighbours, rarity, ranking — and
+ * the type comes from the label.
+ */
+export function groupBySupertype<T extends Profile & { id: string }>(
+  nodes: Node<T>[]
+): Cluster<T>[] {
+  const buckets = new Map<Supertype, Node<T>[]>();
+  for (const node of nodes) {
+    const supertype = supertypeOf(node.item.category);
+    const bucket = buckets.get(supertype);
+    if (bucket) bucket.push(node);
+    else buckets.set(supertype, [node]);
+  }
+
+  return [...buckets.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([supertype, members], id) => {
+      const profiles = members.map((m) => m.item);
+      const counts = new Map<string, number>();
+      for (const p of profiles) {
+        if (p.category) counts.set(p.category, (counts.get(p.category) ?? 0) + 1);
+      }
+      return {
+        id,
+        members,
+        centroid: centroidOf(members),
+        traits: dominantTraits(profiles),
+        tags: [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c),
+        name: `${supertype} type`,
+      };
+    });
 }

@@ -14,6 +14,7 @@ import {
   type TracedStroke,
 } from '../trace/tracer';
 import { makeSampleDrawing } from '../trace/sample';
+import PeelStage from '../trace/PeelStage';
 import { storedPalette } from '../palettes';
 
 const MAX_DIM = 1000;
@@ -46,6 +47,7 @@ export default function Trace({ onBack, onAnimate }: TraceProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [peelKey, setPeelKey] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const canvas = useMemo(
@@ -233,8 +235,23 @@ export default function Trace({ onBack, onAnimate }: TraceProps) {
             ) : (
               <div className="stack" style={{ gap: 14 }}>
                 <div className="trace-source">
-                  <img className="trace-source__img" src={source.url} alt="source drawing" />
+                  <PeelStage
+                    imageUrl={source.url}
+                    result={result}
+                    strokeWidth={options.strokeWidth}
+                    playKey={peelKey}
+                    ink={ink}
+                  />
                   <div className="lab-tools">
+                    <button
+                      className="btn btn--primary"
+                      type="button"
+                      style={{ width: 'auto' }}
+                      disabled={!result || result.strokes.length === 0}
+                      onClick={() => setPeelKey((key) => key + 1)}
+                    >
+                      ✧ peel it off the page
+                    </button>
                     <button
                       className="btn btn--soft"
                       type="button"

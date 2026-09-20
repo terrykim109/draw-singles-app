@@ -1,9 +1,3 @@
-"""SQLite access + schema.
-
-Base schema is the auth/profile/swipe one; the classifier's columns are added on
-top of it. Single source of truth for the drawing file is `photo_filename` — the
-matcher reads whatever the profile endpoints wrote.
-"""
 import os
 import sqlite3
 
@@ -16,11 +10,9 @@ USERS_COLUMNS = {
     "name": "TEXT",
     "photo_filename": "TEXT",
     "answers": "TEXT",
-    # matching inputs
     "age": "INTEGER",
     "gender": "TEXT",
     "interested_in": "TEXT",
-    # classifier output
     "drawing_class": "TEXT",
     "drawing_confidence": "REAL",
     "drawing_features": "TEXT",
@@ -63,7 +55,6 @@ def init_db():
         )
     """)
 
-    # centroids for nearest-centroid typing; see matching.assign_group
     conn.execute("""
         CREATE TABLE IF NOT EXISTS groups (
             id TEXT PRIMARY KEY,
@@ -76,7 +67,31 @@ def init_db():
         )
     """)
 
-    # add any column a running database is missing, so an existing db keeps working
+    # --- NEW: chat + social feedback ---
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id TEXT,
+            recipient_id TEXT,
+            body TEXT,
+            created_at TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS social_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_a TEXT,
+            user_b TEXT,
+            thread_id TEXT UNIQUE,
+            message_count INTEGER DEFAULT 0,
+            last_message_at TEXT,
+            outcome TEXT,
+            created_at TEXT
+        )
+    """)
+
+    # migrate missing columns on existing DBs
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
     for name, decl in USERS_COLUMNS.items():
         if name not in existing:
