@@ -9,6 +9,16 @@ export type Palette = {
 };
 
 export const PALETTES: Palette[] = [
+
+  {
+    id: 'sharpie',
+    name: 'tangerine sharpie',
+    ink: '#e2620b',
+    inkDeep: '#b84c05',
+    surface: '#fae4d0',
+    surfaceHover: '#f6d9be',
+    muted: '#cbaa8c',
+  },
   {
     id: 'ballpoint',
     name: 'ballpoint blue',
@@ -54,15 +64,7 @@ export const PALETTES: Palette[] = [
     surfaceHover: '#cde9db',
     muted: '#9dbfae',
   },
-  {
-    id: 'sharpie',
-    name: 'tangerine sharpie',
-    ink: '#e2620b',
-    inkDeep: '#b84c05',
-    surface: '#fae4d0',
-    surfaceHover: '#f6d9be',
-    muted: '#cbaa8c',
-  },
+
   {
     id: 'graphite',
     name: 'graphite pencil',

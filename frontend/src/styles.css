@@ -1,11 +1,11 @@
 :root {
   --bg: #e7e6e8;
   --paper: #f6f5f2;
-  --surface: #e3e0f6;
-  --surface-hover: #dbd7f3;
-  --ink: #2b18e0;
-  --ink-deep: #1f0fb8;
-  --ink-muted: #a9a6c9;
+  --surface: #fae4d0;
+  --surface-hover: #f6d9be;
+  --ink: #e2620b;
+  --ink-deep: #b84c05;
+  --ink-muted: #cbaa8c;
   --white: #f4f3f6;
   --tape: rgba(198, 176, 122, 0.35);
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
