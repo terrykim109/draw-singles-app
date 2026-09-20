@@ -2,8 +2,6 @@
 
 A drawing-based matching app. No selfies, no filters — you draw, answer three questions, and get matched with people whose drawings (and conversation styles) align with yours. A trained PyTorch visual encoder (`sketch_matcher`) reads every stroke and turns it into a 250-dimensional similarity vector; that vector drives the groups, the constellation graph, and the swipe deck. The app also includes a real-time chat system, an optional lightweight social-compatibility ML layer that learns from chat outcomes to refine match ranking, an animation lab for doodles, and an image-to-SVG tracer.
 
-**Frontend preview:** Vercel-hosted frontend only; the Python/ML backend is too large for available free hosting limits, so full functionality requires running it locally.
-
 ## Tech Stack
 | Layer           | Stack                                                                      |
 | --------------- | -------------------------------------------------------------------------- |
@@ -12,6 +10,8 @@ A drawing-based matching app. No selfies, no filters — you draw, answer three 
 | **ML (Social)** | Optional 2-layer projection network that learns from chat history          |
 | **Frontend**    | React 18, TypeScript, Vite                                                 |
 | **Styling**     | Vanilla CSS with hand-drawn design tokens                                  |
+
+**Frontend preview:** Vercel-hosted frontend only; the Python/ML backend is too large for available free hosting limits, so full functionality requires running it locally.
 
 ## Prerequisites
 Python 3.10+
